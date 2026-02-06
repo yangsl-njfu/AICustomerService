@@ -16,7 +16,7 @@ from schemas import (
 from services.auth_service import AuthService
 from services.session_service import SessionService
 from services.message_service import MessageService
-from services.langgraph_workflow import langgraph_workflow
+from services.ai.workflow import ai_workflow
 from services.attachment_service import AttachmentService
 
 router = APIRouter()
@@ -165,7 +165,7 @@ async def send_message(
     ]
 
     # 处理消息
-    result = await langgraph_workflow.process_message(
+    result = await ai_workflow.process_message(
         user_id=user_id,
         session_id=message_data.session_id,
         message=message_data.message,
@@ -194,7 +194,9 @@ async def send_message(
         sources=result.get("sources"),
         intent=result.get("intent"),
         ticket_id=result.get("ticket_id"),
-        processing_time=result.get("processing_time")
+        processing_time=result.get("processing_time"),
+        quick_actions=result.get("quick_actions"),  # 新增
+        recommended_products=result.get("recommended_products")  # 新增
     )
 
 
@@ -272,8 +274,10 @@ async def stream_message(
         full_response = ""
         intent = None
         sources = None
+        quick_actions = None
+        recommended_products = None
         
-        async for chunk in langgraph_workflow.process_message_stream(
+        async for chunk in ai_workflow.process_message_stream(
             user_id=user_id,
             session_id=message_data.session_id,
             message=message_data.message,
@@ -282,11 +286,16 @@ async def stream_message(
             if chunk["type"] == "intent":
                 intent = chunk.get("intent")
                 yield f"data: {json.dumps(chunk)}\n\n"
+            elif chunk["type"] == "thinking":
+                yield f"data: {json.dumps(chunk)}\n\n"
             elif chunk["type"] == "content":
                 full_response += chunk.get("delta", "")
                 yield f"data: {json.dumps(chunk)}\n\n"
             elif chunk["type"] == "end":
                 sources = chunk.get("sources")
+                quick_actions = chunk.get("quick_actions")
+                recommended_products = chunk.get("recommended_products")
+                # 发送包含quick_actions的end事件
                 yield f"data: {json.dumps(chunk)}\n\n"
         
         # 保存AI回复到数据库
@@ -296,7 +305,12 @@ async def stream_message(
                 session_id=message_data.session_id,
                 role="assistant",
                 content=full_response,
-                metadata={"intent": intent, "sources": sources}
+                metadata={
+                    "intent": intent,
+                    "sources": sources,
+                    "quick_actions": quick_actions,
+                    "recommended_products": recommended_products
+                }
             )
         
         # 更新会话活动时间

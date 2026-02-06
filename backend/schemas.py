@@ -33,6 +33,14 @@ class TicketPriority(str, Enum):
     URGENT = "urgent"
 
 
+class QuickActionType(str, Enum):
+    """快速操作类型"""
+    BUTTON = "button"      # 普通按钮
+    LINK = "link"          # 链接
+    FORM = "form"          # 表单
+    PRODUCT = "product"    # 商品卡片
+
+
 # 用户相关模式
 class UserBase(BaseModel):
     username: str
@@ -98,6 +106,16 @@ class AttachmentCreate(BaseModel):
     file_path: Optional[str] = None
 
 
+class QuickAction(BaseModel):
+    """快速操作按钮"""
+    type: QuickActionType
+    label: str
+    action: str
+    data: Optional[Dict[str, Any]] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+
+
 class MessageCreate(BaseModel):
     session_id: str
     message: str
@@ -136,6 +154,8 @@ class ConversationResponse(BaseModel):
     intent: Optional[str] = None
     ticket_id: Optional[str] = None
     processing_time: Optional[float] = None
+    quick_actions: Optional[List[QuickAction]] = None  # 新增快速操作按钮
+    recommended_products: Optional[List[str]] = None   # 推荐商品ID列表
 
 
 # 工单相关模式

@@ -189,16 +189,47 @@ def load_context_node(state: ConversationState) -> ConversationState:
     return state
 ```
 
-**3. IntentRecognition节点**
+**3. IntentRecognition节点（增强版）**
 ```python
 def intent_recognition_node(state: ConversationState) -> ConversationState:
-    """使用LLM识别用户意图"""
+    """使用LLM识别用户意图 - 增强上下文感知"""
+    
+    # 获取页面上下文
+    page_context = state.get("page_context", {})
+    current_page = page_context.get("page") if page_context else None
+    
+    # 根据页面上下文调整意图识别
+    context_hints = []
+    
+    if current_page == "product_detail":
+        context_hints.append("用户正在查看商品详情")
+        product_title = page_context.get("product_title")
+        if product_title:
+            context_hints.append(f"当前商品：{product_title}")
+    
+    elif current_page == "cart":
+        cart_items = page_context.get("cart_items", [])
+        context_hints.append(f"用户购物车有{len(cart_items)}件商品")
+        context_hints.append(f"总金额：¥{page_context.get('cart_total', 0)}")
+    
+    elif current_page == "orders":
+        context_hints.append("用户正在查看订单")
+    
+    elif current_page == "product_list":
+        category = page_context.get("category")
+        if category:
+            context_hints.append(f"用户正在浏览{category}类别商品")
+    
+    # 将上下文提示加入prompt
     prompt = f"""
     分析以下用户消息的意图：
     消息：{state["user_message"]}
     历史：{state["conversation_history"][-5:]}
     
-    可能的意图：问答、工单、产品咨询、闲聊
+    当前上下文：
+    {chr(10).join(context_hints) if context_hints else "无特定上下文"}
+    
+    可能的意图：问答、工单、产品咨询、购买咨询、订单查询、闲聊
     返回JSON格式：{{"intent": "...", "confidence": 0.0-1.0}}
     """
     result = llm.invoke(prompt)
@@ -929,6 +960,8 @@ class ConversationResponse(BaseModel):
     sources: Optional[List[dict]] = None
     intent: Optional[str] = None
     ticket_id: Optional[str] = None
+    recommended_products: Optional[List[dict]] = None  # 新增：推荐商品
+    quick_actions: Optional[List[dict]] = None  # 新增：快速操作
 ```
 
 **4. 工单模型**
@@ -975,7 +1008,67 @@ class FileUpload(BaseModel):
     content: bytes
 ```
 
-**6. LangGraph状态模型**
+**6. 页面上下文模型（新增）**
+```python
+class PageContext(BaseModel):
+    """页面上下文 - 用于AI感知用户当前浏览状态"""
+    page: str  # 页面类型：product_detail, product_list, cart, orders, home
+    
+    # 商品详情页上下文
+    product_id: Optional[str] = None
+    product_title: Optional[str] = None
+    product_price: Optional[float] = None
+    product_description: Optional[str] = None
+    product_tech_stack: Optional[List[str]] = None
+    
+    # 购物车上下文
+    cart_items: Optional[List[dict]] = None
+    cart_total: Optional[float] = None
+    cart_item_count: Optional[int] = None
+    
+    # 订单上下文
+    order_id: Optional[str] = None
+    order_status: Optional[str] = None
+    
+    # 商品列表上下文
+    category: Optional[str] = None
+    search_query: Optional[str] = None
+    
+    # 用户行为数据
+    time_on_page: Optional[int] = None  # 页面停留时间（秒）
+    scroll_depth: Optional[float] = None  # 滚动深度（百分比）
+```
+
+**7. 聊天请求模型（增强）**
+```python
+class ChatRequest(BaseModel):
+    """聊天请求 - 增强版包含页面上下文"""
+    user_id: str
+    session_id: str
+    message: str
+    context: Optional[PageContext] = None  # 新增：页面上下文
+    attachments: Optional[List[Dict]] = None
+```
+
+**8. AI建议模型（新增）**
+```python
+class AISuggestion(BaseModel):
+    """AI建议 - 用于购物车等页面的智能推荐"""
+    type: str  # coupon, bundle, product_recommendation
+    title: str
+    description: str
+    action_url: Optional[str] = None
+    action_data: Optional[dict] = None
+    priority: int = 0  # 优先级，数字越大越重要
+
+class CartSuggestionsResponse(BaseModel):
+    """购物车建议响应"""
+    coupon_suggestion: Optional[AISuggestion] = None
+    bundle_recommendation: Optional[AISuggestion] = None
+    product_recommendations: Optional[List[dict]] = None
+```
+
+**9. LangGraph状态模型（增强）**
 ```python
 from typing import TypedDict, List, Dict, Optional
 
@@ -985,6 +1078,7 @@ class ConversationState(TypedDict):
     user_id: str
     session_id: str
     attachments: Optional[List[Attachment]]
+    page_context: Optional[PageContext]  # 新增：页面上下文
     
     # 上下文
     conversation_history: List[Dict[str, str]]
@@ -1000,6 +1094,7 @@ class ConversationState(TypedDict):
     sources: Optional[List[dict]]
     ticket_id: Optional[str]
     recommended_products: Optional[List[str]]
+    quick_actions: Optional[List[dict]]  # 新增：快速操作按钮
     
     # 元数据
     timestamp: datetime
@@ -1323,6 +1418,132 @@ tags: ["产品", "使用指南"]
 }
 ```
 
+### AI-商城集成API（新增）
+
+**POST /api/ai/cart-suggestions**
+```python
+# 请求
+{
+    "cart_items": [
+        {
+            "product_id": "prod_123",
+            "title": "毕业设计项目A",
+            "price": 299.00,
+            "quantity": 1
+        }
+    ],
+    "total_amount": 299.00
+}
+
+# 响应
+{
+    "coupon_suggestion": {
+        "type": "coupon",
+        "title": "满300减50优惠券",
+        "description": "再加1元即可使用此优惠券，节省50元",
+        "action_data": {
+            "coupon_code": "SAVE50",
+            "min_amount": 300
+        },
+        "priority": 1
+    },
+    "bundle_recommendation": {
+        "type": "bundle",
+        "title": "搭配推荐：项目B",
+        "description": "与项目A技术栈相似，一起购买更优惠",
+        "action_url": "/products/prod_456",
+        "action_data": {
+            "product_id": "prod_456",
+            "bundle_discount": 0.15
+        },
+        "priority": 2
+    },
+    "product_recommendations": [
+        {
+            "id": "prod_789",
+            "title": "相关项目C",
+            "price": 199.00,
+            "reason": "基于您的浏览历史推荐"
+        }
+    ]
+}
+```
+
+**POST /api/ai/product-questions**
+```python
+# 请求
+{
+    "product_id": "prod_123",
+    "question": "这个项目适合我吗？"
+}
+
+# 响应
+{
+    "answer": "这个项目非常适合您！它使用Vue 3 + FastAPI技术栈...",
+    "sources": [
+        {
+            "type": "product_info",
+            "field": "description"
+        }
+    ],
+    "quick_actions": [
+        {
+            "type": "add_to_cart",
+            "label": "加入购物车",
+            "product_id": "prod_123"
+        },
+        {
+            "type": "view_demo",
+            "label": "查看演示",
+            "url": "/demo/prod_123"
+        }
+    ]
+}
+```
+
+**POST /api/ai/proactive-trigger**
+```python
+# 请求
+{
+    "trigger_type": "page_dwell",  # page_dwell, scroll_bottom, cart_idle
+    "page_context": {
+        "page": "product_detail",
+        "product_id": "prod_123",
+        "time_on_page": 35
+    }
+}
+
+# 响应
+{
+    "should_trigger": true,
+    "message": "您已经浏览这个商品一会儿了，有什么疑问吗？我可以帮您解答！",
+    "priority": "medium"
+}
+```
+
+**POST /api/ai/sync-product**
+```python
+# 请求
+{
+    "product_id": "prod_123",
+    "action": "create",  # create, update, delete
+    "product_data": {
+        "title": "Vue3 + FastAPI 毕业设计",
+        "description": "完整的前后端分离项目...",
+        "price": 299.00,
+        "tech_stack": ["Vue3", "FastAPI", "MySQL"],
+        "features": ["用户认证", "数据管理", "API接口"]
+    }
+}
+
+# 响应
+{
+    "success": true,
+    "message": "商品信息已同步到AI知识库",
+    "indexed_chunks": 5
+}
+```
+
 
 ## 前端组件设计
 
@@ -1337,23 +1558,35 @@ src/
 │   │   ├── MessageItem.vue         # 单条消息
 │   │   ├── InputBox.vue            # 输入框
 │   │   ├── FileUpload.vue          # 文件上传
-│   │   └── TypingIndicator.vue     # 输入指示器
+│   │   ├── TypingIndicator.vue     # 输入指示器
+│   │   ├── GlobalAIAssistant.vue   # 全局AI助手（新增）
+│   │   ├── ProductCard.vue         # 商品卡片（新增）
+│   │   └── QuickActions.vue        # 快速操作按钮（新增）
 │   ├── session/
 │   │   ├── SessionList.vue         # 会话列表
 │   │   └── SessionItem.vue         # 会话项
 │   ├── ticket/
 │   │   ├── TicketList.vue          # 工单列表
 │   │   └── TicketDetail.vue        # 工单详情
+│   ├── mall/
+│   │   ├── AIConsultCard.vue       # AI咨询卡片（新增）
+│   │   ├── AISuggestionsCard.vue   # AI建议卡片（新增）
+│   │   └── MiniChat.vue            # 迷你聊天窗口（新增）
 │   └── admin/
 │       ├── Dashboard.vue           # 管理仪表板
 │       ├── ConversationMonitor.vue # 对话监控
 │       ├── KnowledgeManager.vue    # 知识库管理
 │       └── ConfigPanel.vue         # 配置面板
+├── composables/
+│   ├── useAIProactive.ts           # 主动提示逻辑（新增）
+│   └── usePageContext.ts           # 页面上下文收集（新增）
 ├── stores/
 │   ├── auth.ts                     # 认证状态
 │   ├── chat.ts                     # 对话状态
 │   ├── session.ts                  # 会话状态
-│   └── config.ts                   # 配置状态
+│   ├── config.ts                   # 配置状态
+│   ├── product.ts                  # 商品状态（新增）
+│   └── cart.ts                     # 购物车状态（新增）
 ├── services/
 │   ├── api.ts                      # API客户端
 │   ├── websocket.ts                # WebSocket连接
@@ -1499,9 +1732,503 @@ const handleFileChange = (e: Event) => {
 </script>
 ```
 
+**4. GlobalAIAssistant.vue（全局AI助手）- 新增**
+```vue
+<template>
+  <div class="ai-assistant-container">
+    <!-- 浮动按钮 -->
+    <button 
+      v-if="!isOpen" 
+      @click="toggleChat"
+      class="ai-float-btn"
+      :class="{ 'has-notification': hasNotification }"
+    >
+      <span class="ai-icon">🤖</span>
+      <span v-if="hasNotification" class="notification-badge">{{ notificationCount }}</span>
+    </button>
+
+    <!-- 聊天窗口 -->
+    <transition name="slide-up">
+      <div v-if="isOpen" class="ai-chat-window">
+        <!-- 头部 -->
+        <div class="chat-header">
+          <div class="header-left">
+            <span class="ai-avatar">🤖</span>
+            <div class="header-info">
+              <h3>AI助手</h3>
+              <p class="status">在线 · 随时为您服务</p>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button @click="minimizeChat" class="icon-btn">➖</button>
+            <button @click="closeChat" class="icon-btn">✖️</button>
+          </div>
+        </div>
+
+        <!-- 上下文提示 -->
+        <div v-if="currentContext" class="context-banner">
+          <span class="context-icon">📍</span>
+          <span class="context-text">{{ currentContext }}</span>
+        </div>
+
+        <!-- 消息区域 -->
+        <div class="messages-area" ref="messagesArea">
+          <div v-for="msg in messages" :key="msg.id" :class="['message', msg.role]">
+            <div class="message-content">{{ msg.content }}</div>
+            
+            <!-- 商品卡片 -->
+            <ProductCard 
+              v-if="msg.products" 
+              :products="msg.products"
+              @add-to-cart="handleAddToCart"
+              @view-detail="handleViewDetail"
+            />
+            
+            <!-- 快速操作 -->
+            <QuickActions 
+              v-if="msg.quick_actions"
+              :actions="msg.quick_actions"
+              @action-click="handleQuickAction"
+            />
+          </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="input-area">
+          <input 
+            v-model="userInput"
+            @keyup.enter="sendMessage"
+            placeholder="输入消息..."
+            class="message-input"
+          />
+          <button @click="sendMessage" class="send-btn">发送</button>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useChatStore } from '@/stores/chat'
+import { useProductStore } from '@/stores/product'
+import { useCartStore } from '@/stores/cart'
+import { usePageContext } from '@/composables/usePageContext'
+
+const route = useRoute()
+const router = useRouter()
+const chatStore = useChatStore()
+const productStore = useProductStore()
+const cartStore = useCartStore()
+const { getPageContext } = usePageContext()
+
+const isOpen = ref(false)
+const userInput = ref('')
+const messages = ref([])
+const hasNotification = ref(false)
+const notificationCount = ref(0)
+
+// 当前上下文
+const currentContext = computed(() => {
+  const routeName = route.name
+  const params = route.params
+  
+  if (routeName === 'ProductDetail' && params.id) {
+    const product = productStore.currentProduct
+    return `正在查看：${product?.title || '商品详情'}`
+  } else if (routeName === 'ProductList') {
+    return '正在浏览商品列表'
+  } else if (routeName === 'Cart') {
+    return `购物车（${cartStore.items.length}件商品）`
+  } else if (routeName === 'Orders') {
+    return '我的订单'
+  }
+  
+  return null
+})
+
+// 监听路由变化，自动发送上下文
+watch(() => route.fullPath, (newPath, oldPath) => {
+  if (isOpen.value && newPath !== oldPath) {
+    sendContextUpdate()
+  }
+})
+
+// 发送上下文更新
+const sendContextUpdate = () => {
+  const context = getPageContext()
+  chatStore.updateContext(context)
+}
+
+// 切换聊天窗口
+const toggleChat = () => {
+  isOpen.value = !isOpen.value
+  if (isOpen.value) {
+    sendContextUpdate()
+    hasNotification.value = false
+    notificationCount.value = 0
+  }
+}
+
+// 发送消息
+const sendMessage = async () => {
+  if (!userInput.value.trim()) return
+  
+  const message = userInput.value
+  userInput.value = ''
+  
+  // 添加用户消息
+  messages.value.push({
+    id: Date.now(),
+    role: 'user',
+    content: message
+  })
+  
+  // 发送到后端（带上下文）
+  const context = getPageContext()
+  const response = await chatStore.sendMessageWithContext(message, context)
+  
+  // 添加AI回复
+  messages.value.push({
+    id: Date.now() + 1,
+    role: 'assistant',
+    content: response.response,
+    products: response.recommended_products,
+    quick_actions: response.quick_actions
+  })
+}
+
+// 处理加入购物车
+const handleAddToCart = async (product: any) => {
+  await cartStore.addItem(product.id, 1)
+  
+  // AI确认消息
+  messages.value.push({
+    id: Date.now(),
+    role: 'assistant',
+    content: `已将"${product.title}"加入购物车！您还需要其他帮助吗？`
+  })
+}
+
+// 处理查看详情
+const handleViewDetail = (product: any) => {
+  router.push(`/products/${product.id}`)
+  minimizeChat()
+}
+
+// 主动推送通知
+const pushNotification = (message: string) => {
+  if (!isOpen.value) {
+    hasNotification.value = true
+    notificationCount.value++
+  }
+  
+  messages.value.push({
+    id: Date.now(),
+    role: 'assistant',
+    content: message
+  })
+}
+
+// 暴露给外部调用
+defineExpose({
+  pushNotification,
+  openChat: () => { isOpen.value = true }
+})
+</script>
+```
+
+**5. AIConsultCard.vue（AI咨询卡片）- 新增**
+```vue
+<template>
+  <div class="ai-consult-card">
+    <div class="card-header">
+      <span class="ai-icon">🤖</span>
+      <h3>AI助手为您解答</h3>
+    </div>
+    
+    <!-- 快速问题 -->
+    <div class="quick-questions">
+      <button 
+        v-for="q in quickQuestions" 
+        :key="q"
+        @click="askQuestion(q)"
+        class="quick-question-btn"
+      >
+        {{ q }}
+      </button>
+    </div>
+    
+    <!-- 迷你聊天 -->
+    <MiniChat 
+      v-if="showMiniChat"
+      :messages="miniMessages"
+      @send="sendMiniMessage"
+    />
+    
+    <button @click="openFullChat" class="open-full-chat-btn">
+      展开完整对话
+    </button>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, inject } from 'vue'
+import { useRoute } from 'vue-router'
+import { useProductStore } from '@/stores/product'
+import { useChatStore } from '@/stores/chat'
+
+const route = useRoute()
+const productStore = useProductStore()
+const chatStore = useChatStore()
+const aiAssistant = inject('aiAssistant')
+
+const product = computed(() => productStore.currentProduct)
+
+// 快速问题（根据商品动态生成）
+const quickQuestions = computed(() => [
+  '这个项目适合我吗？',
+  '技术栈是什么？',
+  '包含哪些功能？',
+  '有演示视频吗？'
+])
+
+const showMiniChat = ref(false)
+const miniMessages = ref([])
+
+// 询问快速问题
+const askQuestion = async (question: string) => {
+  showMiniChat.value = true
+  
+  miniMessages.value.push({
+    id: Date.now(),
+    role: 'user',
+    content: question
+  })
+  
+  // 发送到AI（带商品上下文）
+  const context = {
+    page: 'product_detail',
+    product_id: product.value.id,
+    product_title: product.value.title,
+    product_price: product.value.price,
+    product_tech_stack: product.value.tech_stack
+  }
+  
+  const response = await chatStore.sendMessageWithContext(question, context)
+  
+  miniMessages.value.push({
+    id: Date.now() + 1,
+    role: 'assistant',
+    content: response.response
+  })
+}
+
+// 打开完整聊天
+const openFullChat = () => {
+  aiAssistant.value?.openChat()
+}
+</script>
+```
+
+**6. AISuggestionsCard.vue（AI建议卡片）- 新增**
+```vue
+<template>
+  <div class="ai-suggestions-card">
+    <div class="card-header">
+      <span class="ai-icon">💡</span>
+      <h3>AI为您推荐</h3>
+    </div>
+    
+    <!-- 优惠建议 -->
+    <div v-if="couponSuggestion" class="suggestion-item">
+      <span class="suggestion-icon">🎫</span>
+      <div class="suggestion-content">
+        <p class="suggestion-title">{{ couponSuggestion.title }}</p>
+        <p class="suggestion-desc">{{ couponSuggestion.description }}</p>
+      </div>
+      <button @click="applyCoupon" class="apply-btn">应用</button>
+    </div>
+    
+    <!-- 搭配推荐 -->
+    <div v-if="bundleRecommendation" class="suggestion-item">
+      <span class="suggestion-icon">📦</span>
+      <div class="suggestion-content">
+        <p class="suggestion-title">{{ bundleRecommendation.title }}</p>
+        <p class="suggestion-desc">{{ bundleRecommendation.description }}</p>
+      </div>
+      <button @click="viewBundle" class="view-btn">查看</button>
+    </div>
+    
+    <!-- 咨询按钮 -->
+    <button @click="askAI" class="ask-ai-btn">
+      <span>🤖</span>
+      <span>有疑问？问问AI助手</span>
+    </button>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, inject } from 'vue'
+import { useCartStore } from '@/stores/cart'
+import { useChatStore } from '@/stores/chat'
+
+const cartStore = useCartStore()
+const chatStore = useChatStore()
+const aiAssistant = inject('aiAssistant')
+
+const couponSuggestion = ref(null)
+const bundleRecommendation = ref(null)
+
+// 获取AI建议
+onMounted(async () => {
+  const suggestions = await chatStore.getCartSuggestions({
+    cart_items: cartStore.items,
+    total_amount: cartStore.total
+  })
+  
+  couponSuggestion.value = suggestions.coupon_suggestion
+  bundleRecommendation.value = suggestions.bundle_recommendation
+})
+
+// 询问AI
+const askAI = () => {
+  aiAssistant.value?.openChat()
+  aiAssistant.value?.pushNotification('我看到您的购物车有几件商品，有什么可以帮您的吗？')
+}
+</script>
+```
+
+### Composables（新增）
+
+**usePageContext.ts（页面上下文收集）**
+```typescript
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useProductStore } from '@/stores/product'
+import { useCartStore } from '@/stores/cart'
+
+export function usePageContext() {
+  const route = useRoute()
+  const productStore = useProductStore()
+  const cartStore = useCartStore()
+  
+  const getPageContext = () => {
+    const context: any = {
+      page: route.name as string
+    }
+    
+    // 商品详情页
+    if (route.name === 'ProductDetail') {
+      const product = productStore.currentProduct
+      if (product) {
+        context.product_id = product.id
+        context.product_title = product.title
+        context.product_price = product.price
+        context.product_description = product.description
+        context.product_tech_stack = product.tech_stack
+      }
+    }
+    
+    // 购物车页面
+    if (route.name === 'Cart') {
+      context.cart_items = cartStore.items
+      context.cart_total = cartStore.total
+      context.cart_item_count = cartStore.items.length
+    }
+    
+    // 订单页面
+    if (route.name === 'Orders' && route.params.id) {
+      context.order_id = route.params.id
+    }
+    
+    // 商品列表页
+    if (route.name === 'ProductList') {
+      context.category = route.query.category
+      context.search_query = route.query.q
+    }
+    
+    return context
+  }
+  
+  return {
+    getPageContext
+  }
+}
+```
+
+**useAIProactive.ts（主动提示逻辑）**
+```typescript
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+
+export function useAIProactive(aiAssistant: any) {
+  const route = useRoute()
+  let timeOnPage = 0
+  let scrollDepth = 0
+  let timer: any = null
+  const triggeredEvents = new Set()
+
+  // 监听用户行为
+  onMounted(() => {
+    // 页面停留时间
+    timer = setInterval(() => {
+      timeOnPage++
+      checkTriggers()
+    }, 1000)
+
+    // 滚动深度
+    window.addEventListener('scroll', handleScroll)
+  })
+
+  onUnmounted(() => {
+    clearInterval(timer)
+    window.removeEventListener('scroll', handleScroll)
+  })
+
+  const handleScroll = () => {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+    const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight
+    scrollDepth = (scrollTop / scrollHeight) * 100
+    checkTriggers()
+  }
+
+  // 检查触发条件
+  const checkTriggers = () => {
+    // 商品详情页停留超过30秒
+    if (route.name === 'ProductDetail' && timeOnPage === 30 && !triggeredEvents.has('product_30s')) {
+      triggerAI('您已经浏览这个商品一会儿了，有什么疑问吗？我可以帮您解答！')
+      triggeredEvents.add('product_30s')
+    }
+
+    // 滚动到页面底部
+    if (scrollDepth > 90 && !triggeredEvents.has('scroll_bottom')) {
+      triggerAI('看完了吗？有什么想了解的可以问我哦！')
+      triggeredEvents.add('scroll_bottom')
+    }
+
+    // 购物车停留超过60秒未结算
+    if (route.name === 'Cart' && timeOnPage === 60 && !triggeredEvents.has('cart_60s')) {
+      triggerAI('需要帮您看看有没有可用的优惠券吗？')
+      triggeredEvents.add('cart_60s')
+    }
+  }
+
+  const triggerAI = (message: string) => {
+    aiAssistant.value?.pushNotification(message)
+  }
+
+  return {
+    timeOnPage: ref(timeOnPage),
+    scrollDepth: ref(scrollDepth)
+  }
+}
+```
+
 ### 状态管理（Pinia）
 
-**chat.ts（对话状态）**
+**chat.ts（对话状态）- 增强版**
 ```typescript
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -1511,13 +2238,20 @@ export const useChatStore = defineStore('chat', () => {
   const currentSessionId = ref<string | null>(null)
   const sessions = ref<Session[]>([])
   const messages = ref<Map<string, Message[]>>(new Map())
+  const currentContext = ref<any>(null)  // 新增：当前页面上下文
   
   const currentSessionMessages = computed(() => {
     if (!currentSessionId.value) return []
     return messages.value.get(currentSessionId.value) || []
   })
   
-  const sendMessage = async (content: string) => {
+  // 更新上下文
+  const updateContext = (context: any) => {
+    currentContext.value = context
+  }
+  
+  // 发送消息（带上下文）
+  const sendMessageWithContext = async (content: string, context?: any) => {
     if (!currentSessionId.value) {
       await createSession()
     }
@@ -1531,10 +2265,11 @@ export const useChatStore = defineStore('chat', () => {
     }
     addMessage(currentSessionId.value!, userMessage)
     
-    // 调用API
-    const response = await apiClient.sendMessage({
+    // 调用API（带上下文）
+    const response = await apiClient.sendMessageWithContext({
       session_id: currentSessionId.value!,
-      message: content
+      message: content,
+      context: context || currentContext.value
     })
     
     // 添加AI回复
@@ -1544,11 +2279,26 @@ export const useChatStore = defineStore('chat', () => {
       content: response.content,
       metadata: {
         sources: response.sources,
-        intent: response.intent
+        intent: response.intent,
+        recommended_products: response.recommended_products,
+        quick_actions: response.quick_actions
       },
       created_at: new Date().toISOString()
     }
     addMessage(currentSessionId.value!, aiMessage)
+    
+    return response
+  }
+  
+  // 原有的sendMessage方法（兼容性）
+  const sendMessage = async (content: string) => {
+    return sendMessageWithContext(content)
+  }
+  
+  // 获取购物车建议
+  const getCartSuggestions = async (cartData: any) => {
+    const response = await apiClient.getCartSuggestions(cartData)
+    return response
   }
   
   const streamMessage = async (content: string) => {
@@ -1578,7 +2328,8 @@ export const useChatStore = defineStore('chat', () => {
     // 流式接收
     const stream = await apiClient.streamMessage({
       session_id: currentSessionId.value!,
-      message: content
+      message: content,
+      context: currentContext.value  // 新增：带上下文
     })
     
     for await (const chunk of stream) {
@@ -1618,7 +2369,11 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId,
     sessions,
     currentSessionMessages,
+    currentContext,
     sendMessage,
+    sendMessageWithContext,  // 新增
+    getCartSuggestions,  // 新增
+    updateContext,  // 新增
     streamMessage,
     createSession,
     loadSessions,
@@ -1678,7 +2433,19 @@ class APIClient {
     return response.data
   }
   
-  async *streamMessage(data: { session_id: string; message: string }) {
+  // 新增：带上下文的消息发送
+  async sendMessageWithContext(data: { session_id: string; message: string; context?: any }) {
+    const response = await this.client.post('/api/chat/message', data)
+    return response.data
+  }
+  
+  // 新增：获取购物车AI建议
+  async getCartSuggestions(cartData: any) {
+    const response = await this.client.post('/api/ai/cart-suggestions', cartData)
+    return response.data
+  }
+  
+  async *streamMessage(data: { session_id: string; message: string; context?: any }) {
     const response = await fetch(
       `${this.client.defaults.baseURL}/api/chat/stream`,
       {
@@ -2304,6 +3071,118 @@ async def stream_chat(request: ChatRequest):
 **属性72：审计日志记录**
 *对于任何*敏感操作，系统应该记录审计日志，包含用户ID、操作类型和时间戳
 **验证需求：15.6**
+
+**属性73：全局AI助手可访问性**
+*对于任何*商城页面，全局AI助手浮动按钮应该始终可见且可点击
+**验证需求：16.1, 16.2**
+
+**属性74：页面上下文自动更新**
+*对于任何*页面切换，AI助手应该自动更新并显示新的页面上下文信息
+**验证需求：16.3, 16.4**
+
+**属性75：通知徽章显示**
+*对于任何*新的AI主动消息，如果聊天窗口未打开，浮动按钮应该显示通知徽章
+**验证需求：16.5**
+
+**属性76：对话状态保持**
+*对于任何*聊天窗口最小化操作，系统应该保持对话历史和状态不丢失
+**验证需求：16.7**
+
+**属性77：商品上下文传递**
+*对于任何*在商品详情页发送的消息，系统应该将商品ID、标题、价格等信息传递到后端
+**验证需求：17.1, 17.5**
+
+**属性78：购物车上下文传递**
+*对于任何*在购物车页面发送的消息，系统应该将购物车商品列表和总金额传递到后端
+**验证需求：17.2, 17.5**
+
+**属性79：上下文感知回答生成**
+*对于任何*带页面上下文的请求，AI生成的回答应该考虑并引用页面上下文信息
+**验证需求：17.6**
+
+**属性80：快速问题显示**
+*对于任何*商品详情页，AI咨询卡片应该显示针对该商品的快速问题按钮
+**验证需求：18.2**
+
+**属性81：快速问题自动发送**
+*对于任何*快速问题按钮点击，系统应该自动发送该问题到AI并显示回答
+**验证需求：18.3**
+
+**属性82：商品信息基础回答**
+*对于任何*商品相关问题，AI回答应该基于该商品的详细信息生成
+**验证需求：18.6**
+
+**属性83：优惠券建议准确性**
+*对于任何*购物车状态，如果存在可用优惠券，AI建议应该包含优惠券推荐
+**验证需求：19.2**
+
+**属性84：搭配商品推荐相关性**
+*对于任何*购物车商品，AI推荐的搭配商品应该与购物车中的商品相关
+**验证需求：19.3**
+
+**属性85：优惠券自动应用**
+*对于任何*优惠券应用操作，系统应该自动将优惠券应用到购物车
+**验证需求：19.4**
+
+**属性86：主动提示触发条件**
+*对于任何*满足触发条件的用户行为（停留30秒、滚动到底部等），AI应该发送主动提示
+**验证需求：20.1, 20.2, 20.3**
+
+**属性87：主动提示非侵入性**
+*对于任何*主动提示，应该以通知徽章形式显示，不打断用户当前操作
+**验证需求：20.5**
+
+**属性88：用户偏好记录**
+*对于任何*用户关闭的主动提示，系统应该记录用户偏好，减少类似提示频率
+**验证需求：20.6**
+
+**属性89：商品卡片显示**
+*对于任何*AI推荐的商品，聊天窗口应该显示商品卡片和操作按钮
+**验证需求：21.1**
+
+**属性90：加购操作执行**
+*对于任何*聊天中的"加入购物车"操作，系统应该成功将商品添加到购物车
+**验证需求：21.2**
+
+**属性91：加购确认消息**
+*对于任何*成功的加购操作，AI应该发送确认消息告知用户
+**验证需求：21.3**
+
+**属性92：页面跳转正确性**
+*对于任何*聊天中的"查看详情"或"立即购买"操作，系统应该跳转到正确的页面
+**验证需求：21.4, 21.5**
+
+**属性93：PageContext字段完整性**
+*对于任何*ChatRequest，如果包含PageContext，应该包含页面类型和相关上下文字段
+**验证需求：22.1, 22.2**
+
+**属性94：上下文驱动意图识别**
+*对于任何*带页面上下文的请求，意图识别应该考虑页面上下文信息
+**验证需求：22.3**
+
+**属性95：上下文增强提示词**
+*对于任何*回答生成，如果有页面上下文，应该将上下文信息加入LLM提示词
+**验证需求：22.4**
+
+**属性96：商品详情页优先检索**
+*对于任何*在商品详情页的询问，系统应该优先从该商品信息中检索答案
+**验证需求：22.5**
+
+**属性97：商品信息自动同步**
+*对于任何*新增或更新的商品，系统应该自动将商品信息同步到AI知识库
+**验证需求：23.1, 23.2**
+
+**属性98：下架商品移除**
+*对于任何*下架的商品，系统应该从AI知识库中移除该商品信息
+**验证需求：23.3**
+
+**属性99：商品知识库字段完整性**
+*对于任何*同步到知识库的商品，应该包含标题、描述、价格、技术栈、功能特性等信息
+**验证需求：23.4**
+
+**属性100：异步同步不阻塞**
+*对于任何*商品同步操作，应该在后台异步执行，不影响商城的正常操作
+**验证需求：23.6**
 
 
 ## 错误处理策略

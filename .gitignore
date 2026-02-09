@@ -42,8 +42,12 @@ pnpm-debug.log*
 
 # 数据文件
 backend/data/
+data/
 *.db
 *.sqlite
+
+# 临时图片
+backend/services/ai/image.png
 
 # 日志
 *.log

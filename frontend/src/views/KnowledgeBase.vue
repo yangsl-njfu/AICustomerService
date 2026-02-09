@@ -121,7 +121,7 @@
       </div>
 
       <template #footer>
-        <el-button @click="showUploadDialog = false">取消</el-button>
+        <el-button @click="handleCancel">取消</el-button>
         <el-button
           type="primary"
           @click="handleUpload"
@@ -148,6 +148,7 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadStatus = ref('')
 const selectedFile = ref<File | null>(null)
+const uploadRef = ref()
 
 const uploadForm = ref({
   title: '',
@@ -180,6 +181,22 @@ const handleFileChange = (file: any) => {
 const handleFileRemove = () => {
   selectedFile.value = null
   uploadForm.value.title = ''
+}
+
+// 取消上传
+const handleCancel = () => {
+  // 重置所有状态
+  showUploadDialog.value = false
+  uploading.value = false
+  uploadProgress.value = 0
+  uploadStatus.value = ''
+  selectedFile.value = null
+  uploadForm.value = { title: '', description: '' }
+  
+  // 清空 el-upload 组件的文件列表
+  if (uploadRef.value) {
+    uploadRef.value.clearFiles()
+  }
 }
 
 // 格式化文件大小
@@ -221,6 +238,12 @@ const handleUpload = async () => {
     // 重置表单
     uploadForm.value = { title: '', description: '' }
     selectedFile.value = null
+    uploadProgress.value = 0
+    
+    // 清空 el-upload 组件的文件列表
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles()
+    }
 
     // 刷新列表
     fetchDocuments()

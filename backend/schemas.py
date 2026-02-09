@@ -228,13 +228,14 @@ class KnowledgeDocumentCreate(BaseModel):
 class KnowledgeDocumentResponse(BaseModel):
     id: str
     title: str
-    category: Optional[str]
-    tags: Optional[List[str]]
-    source: Optional[str]
-    version: int
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    description: str = ""
+    file_name: str
+    file_type: str
+    file_size: int
+    chunk_count: int
+    created_by: str
+    status: str = "active"
+    created_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

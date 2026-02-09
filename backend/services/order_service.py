@@ -270,6 +270,20 @@ class OrderService:
                 "username": order.buyer.username
             }
         
+        # items 字段始终返回（前端需要显示商品名称）
+        if hasattr(order, 'items'):
+            data["items"] = [
+                {
+                    "id": item.id,
+                    "product_id": item.product_id,
+                    "product_title": item.product_title,
+                    "product_cover": item.product_cover,
+                    "price": item.price,  # 保持分为单位
+                    "seller_id": item.seller_id
+                }
+                for item in order.items
+            ]
+        
         if not simple:
             data.update({
                 "payment_time": order.payment_time.isoformat() if order.payment_time else None,
@@ -277,18 +291,5 @@ class OrderService:
                 "completion_time": order.completion_time.isoformat() if order.completion_time else None,
                 "updated_at": order.updated_at.isoformat() if order.updated_at else None,
             })
-            
-            if hasattr(order, 'items'):
-                data["items"] = [
-                    {
-                        "id": item.id,
-                        "product_id": item.product_id,
-                        "product_title": item.product_title,
-                        "product_cover": item.product_cover,
-                        "price": item.price,  # 保持分为单位
-                        "seller_id": item.seller_id
-                    }
-                    for item in order.items
-                ]
         
         return data

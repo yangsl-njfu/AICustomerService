@@ -14,13 +14,18 @@ logger = logging.getLogger(__name__)
 class ConfigLoader:
     """配置加载器"""
     
-    def __init__(self, config_dir: str = "./backend/config/businesses"):
+    def __init__(self, config_dir: str = None):
         """
         初始化配置加载器
         
         Args:
             config_dir: 配置文件目录
         """
+        if config_dir is None:
+            # 自动检测配置目录
+            current_dir = Path(__file__).parent
+            config_dir = current_dir / "businesses"
+        
         self.config_dir = Path(config_dir)
         self._configs: Dict[str, Dict[str, Any]] = {}
         self._load_all_configs()

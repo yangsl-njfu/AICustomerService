@@ -185,10 +185,6 @@ class AIWorkflow:
         
         start_time = datetime.now()
         
-        # 1. 显示开始思考
-        yield {"type": "thinking", "content": "正在分析您的问题..."}
-        await asyncio.sleep(0.3)
-        
         # 初始化状态
         initial_state = ConversationState(
             user_message=message,
@@ -211,10 +207,6 @@ class AIWorkflow:
             processing_time=None
         )
         
-        # 2. 显示意图识别
-        yield {"type": "thinking", "content": "识别意图中..."}
-        await asyncio.sleep(0.2)
-        
         # 执行workflow
         logger.info("执行完整workflow...")
         final_state = await self.graph.ainvoke(initial_state)
@@ -223,19 +215,6 @@ class AIWorkflow:
         # 3. 发送识别到的意图
         intent = final_state.get("intent", "问答")
         yield {"type": "intent", "intent": intent}
-        yield {"type": "thinking", "content": f"识别到意图: {intent}"}
-        await asyncio.sleep(0.2)
-        
-        # 4. 如果有工具调用,显示工具信息
-        if final_state.get("tool_used"):
-            tools = final_state.get("tool_used")
-            yield {"type": "thinking", "content": f"正在调用工具: {tools}"}
-            await asyncio.sleep(0.3)
-            yield {"type": "thinking", "content": "工具调用完成,正在生成回复..."}
-            await asyncio.sleep(0.2)
-        else:
-            yield {"type": "thinking", "content": "正在生成回复..."}
-            await asyncio.sleep(0.2)
         
         # 5. 流式输出响应内容
         response = final_state.get("response", "")

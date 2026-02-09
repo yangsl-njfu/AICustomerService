@@ -43,6 +43,19 @@
             </div>
             <div class="message-content user-content">
               <div class="message-text">{{ message.content }}</div>
+              
+              <!-- 订单卡片 -->
+              <div v-if="message.metadata?.order_card" class="user-order-card">
+                <div class="order-card-header">
+                  <span class="order-no">{{ message.metadata.order_card.order_no }}</span>
+                  <span class="order-status">{{ message.metadata.order_card.status }}</span>
+                </div>
+                <div class="order-card-body">
+                  <div class="product-name">{{ message.metadata.order_card.product_name }}</div>
+                  <div class="order-amount">¥{{ message.metadata.order_card.total_amount }}</div>
+                </div>
+              </div>
+              
               <!-- 附件列表 -->
               <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
                 <div
@@ -69,8 +82,7 @@
               <div v-if="message.metadata?.thinking" class="thinking-panel">
                 <div class="thinking-header" @click="toggleThinking(message.id)">
                   <el-icon class="thinking-icon"><ArrowRight v-if="!expandedThinking[message.id]" /><ArrowDown v-else /></el-icon>
-                  <span class="thinking-title">已思考</span>
-                  <span class="thinking-time">用时 {{ calculateThinkingTime(message) }} 秒</span>
+                  <span class="thinking-title">思考过程</span>
                 </div>
                 <div v-show="expandedThinking[message.id]" class="thinking-content">
                   <pre>{{ message.metadata.thinking }}</pre>
@@ -88,6 +100,63 @@
               <!-- 消息内容 -->
               <div class="message-text" v-if="message.content">
                 <MarkdownRenderer :content="message.content" />
+              </div>
+
+              <!-- 快速操作按钮 -->
+              <div v-if="message.metadata?.quick_actions && message.metadata.quick_actions.length > 0" class="quick-actions">
+                <div
+                  v-for="(action, index) in message.metadata.quick_actions"
+                  :key="index"
+                  class="quick-action-item"
+                  :class="action.type"
+                  @click="handleQuickAction(action)"
+                >
+                  <!-- 简洁订单卡片样式 -->
+                  <template v-if="action.type === 'order_card_simple'">
+                    <div class="order-card-simple-content">
+                      <div class="order-card-simple-header">
+                        <span class="order-no-simple">订单号：{{ action.data.order_no }}</span>
+                        <span class="order-status-simple" :class="'status-' + action.data.status">{{ action.data.status_text }}</span>
+                      </div>
+                      <div class="order-card-simple-body">
+                        <span class="product-name-simple">{{ action.data.product_name }}</span>
+                      </div>
+                      <div class="order-card-simple-footer">
+                        <span class="order-amount-simple">¥{{ action.data.total_amount.toFixed(2) }}</span>
+                        <span class="order-time-simple">{{ formatOrderTime(action.data.created_at) }}</span>
+                      </div>
+                    </div>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
+                  
+                  <!-- 订单卡片样式 -->
+                  <template v-else-if="action.type === 'order_card'">
+                    <div class="order-card-content">
+                      <div class="order-card-header">
+                        <span class="order-no">订单号: {{ action.data.order_no }}</span>
+                        <span class="order-status" :class="'status-' + action.data.status">{{ action.data.status_text }}</span>
+                      </div>
+                      <div class="order-card-body">
+                        <div class="product-info">
+                          <span class="product-name">{{ action.data.product_name }}</span>
+                          <span v-if="action.data.item_count > 1" class="item-count">等{{ action.data.item_count }}件商品</span>
+                        </div>
+                        <div class="order-meta">
+                          <span class="order-amount">¥{{ action.data.total_amount.toFixed(2) }}</span>
+                          <span class="order-time">{{ formatOrderTime(action.data.created_at) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
+                  
+                  <!-- 普通按钮样式 -->
+                  <template v-else>
+                    <span v-if="action.icon" class="action-icon">{{ action.icon }}</span>
+                    <span class="action-label">{{ action.label }}</span>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
+                </div>
               </div>
 
               <div class="message-time">{{ formatTime(message.created_at) }}</div>
@@ -149,6 +218,11 @@
           </el-button>
         </el-upload>
 
+        <!-- 选择订单按钮 -->
+        <el-button type="info" circle @click="showOrderSelector" class="order-btn">
+          <el-icon><ShoppingBag /></el-icon>
+        </el-button>
+
         <el-input
           v-model="inputMessage"
           type="textarea"
@@ -166,17 +240,23 @@
         </el-button>
       </div>
     </div>
+
+    <!-- 订单选择弹窗 -->
+    <OrderSelector v-model="orderSelectorVisible" @select="handleOrderSelect" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
-import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading } from '@element-plus/icons-vue'
+import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag } from '@element-plus/icons-vue'
 import { apiClient } from '@/api/client'
 import { ElMessage } from 'element-plus'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
+import OrderSelector from '@/components/OrderSelector.vue'
 
+const router = useRouter()
 const chatStore = useChatStore()
 const messageList = computed(() => chatStore.messages)
 const inputMessage = ref('')
@@ -186,6 +266,7 @@ const selectedFiles = ref<File[]>([])
 const uploading = ref(false)
 const isDragOver = ref(false)
 const expandedThinking = ref<Record<string, boolean>>({})
+const orderSelectorVisible = ref(false)
 
 onMounted(async () => {
   await chatStore.fetchSessions()
@@ -319,7 +400,7 @@ const sendMessage = async () => {
       })
 
       const responses = await Promise.all(uploadTasks)
-      attachments = responses.map(response => ({
+      attachments = responses.map((response: any) => ({
         file_id: response.file_id,
         file_name: response.file_name,
         file_type: response.file_type,
@@ -360,11 +441,6 @@ const toggleThinking = (messageId: string) => {
   expandedThinking.value[messageId] = !expandedThinking.value[messageId]
 }
 
-const calculateThinkingTime = (message: any) => {
-  // 简化计算，返回固定值或基于消息创建时间计算
-  return 3
-}
-
 const scrollToBottom = () => {
   if (messageListRef.value) {
     messageListRef.value.scrollTop = messageListRef.value.scrollHeight
@@ -372,10 +448,268 @@ const scrollToBottom = () => {
 }
 
 const formatTime = (time: string) => {
-  return new Date(time).toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  if (!time) return ''
+  const date = new Date(time)
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+const formatOrderTime = (time: string) => {
+  if (!time) return ''
+  const date = new Date(time)
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  return `${month}-${day} ${hours}:${minutes}`
+}
+
+// 显示订单选择器
+const showOrderSelector = () => {
+  orderSelectorVisible.value = true
+}
+
+// 处理订单选择 - 将订单信息以卡片形式插入到消息中
+const handleOrderSelect = async (order: any) => {
+  // 显示订单卡片消息
+  const orderCardMessage = {
+    id: Date.now().toString(),
+    role: 'user' as const,
+    content: `我要咨询订单 ${order.order_no}`,
+    created_at: new Date().toISOString(),
+    metadata: {
+      order_card: {
+        order_no: order.order_no,
+        status: getOrderStatusText(order.status),
+        product_name: getOrderProductName(order),
+        total_amount: (order.total_amount / 100).toFixed(2),
+        item_count: order.items?.length || 1
+      }
+    }
+  }
+  
+  // 添加到消息列表
+  chatStore.messages.push(orderCardMessage)
+  
+  // 直接调用后端API，不通过 sendMessageStream（避免重复添加用户消息）
+  const sessionId = chatStore.currentSession?.id
+  if (!sessionId) return
+  
+  chatStore.loading = true
+  
+  try {
+    // 创建AI消息（空内容）
+    const assistantMessageId = Date.now().toString() + '_assistant'
+    const assistantMessage = {
+      id: assistantMessageId,
+      role: 'assistant' as const,
+      content: '',
+      created_at: new Date().toISOString(),
+      metadata: {}
+    }
+    chatStore.messages.push(assistantMessage)
+
+    // 使用流式API
+    const token = localStorage.getItem('access_token')
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        message: `我要咨询订单 ${order.order_no}`,
+        attachments: []
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error('Stream request failed')
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+    let fullContent = ''
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'intent') {
+                const msgIndex = chatStore.messages.findIndex(m => m.id === assistantMessageId)
+                if (msgIndex !== -1) {
+                  chatStore.messages[msgIndex].metadata = { ...chatStore.messages[msgIndex].metadata, intent: data.intent }
+                }
+              } else if (data.type === 'thinking') {
+                const msgIndex = chatStore.messages.findIndex(m => m.id === assistantMessageId)
+                if (msgIndex !== -1) {
+                  chatStore.messages[msgIndex].metadata = { ...chatStore.messages[msgIndex].metadata, thinking: data.content }
+                }
+              } else if (data.type === 'content') {
+                fullContent += data.delta
+                const msgIndex = chatStore.messages.findIndex(m => m.id === assistantMessageId)
+                if (msgIndex !== -1) {
+                  chatStore.messages[msgIndex].content = fullContent
+                }
+              } else if (data.type === 'end') {
+                const msgIndex = chatStore.messages.findIndex(m => m.id === assistantMessageId)
+                if (msgIndex !== -1) {
+                  chatStore.messages[msgIndex].metadata = { 
+                    ...chatStore.messages[msgIndex].metadata, 
+                    sources: data.sources,
+                    quick_actions: data.quick_actions
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('解析流式数据失败:', e)
+            }
+          }
+        }
+      }
+    }
+
+    // 更新会话列表
+    await chatStore.fetchSessions()
+  } catch (error) {
+    console.error('发送消息失败:', error)
+    ElMessage.error('发送失败，请重试')
+  } finally {
+    chatStore.loading = false
+  }
+}
+
+const getOrderStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '待支付',
+    paid: '已支付',
+    shipped: '已发货',
+    delivered: '已送达',
+    completed: '已完成',
+    cancelled: '已取消'
+  }
+  return statusMap[status] || '未知'
+}
+
+const getOrderProductName = (order: any) => {
+  if (!order.items || !Array.isArray(order.items) || order.items.length === 0) {
+    return '商品'
+  }
+  return order.items[0]?.product_title || '商品'
+}
+
+// 处理快速操作按钮点击
+const handleQuickAction = (action: any) => {
+  console.log('=== 快速操作 ===')
+  console.log('action.type:', action.type)
+  console.log('action.action:', action.action)
+  console.log('完整action:', action)
+  
+  if (action.type === 'product') {
+    // 商品卡片 - 跳转到商品详情
+    if (action.data?.product_id) {
+      window.open(`/products/${action.data.product_id}`, '_blank')
+    }
+  } else if (action.type === 'order_card_simple') {
+    // 简洁订单卡片 - 直接发送订单信息
+    console.log('点击了简洁订单卡片')
+    const orderCardMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
+      content: `【发订单】`,
+      created_at: new Date().toISOString(),
+      metadata: {
+        order_card: {
+          order_no: action.data.order_no,
+          status: action.data.status_text,
+          product_name: action.data.product_name,
+          total_amount: action.data.total_amount.toFixed(2),
+          item_count: 1
+        }
+      }
+    }
+    
+    // 添加到消息列表
+    chatStore.messages.push(orderCardMessage)
+    
+    // 自动发送订单咨询
+    inputMessage.value = `我要咨询订单 ${action.data.order_no}`
+    sendMessage()
+  } else if (action.type === 'order_card') {
+    // 完整订单卡片 - 直接发送订单信息
+    console.log('点击了完整订单卡片')
+    const orderCardMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
+      content: `【发订单】`,
+      created_at: new Date().toISOString(),
+      metadata: {
+        order_card: {
+          order_no: action.data.order_no,
+          status: action.data.status_text,
+          product_name: action.data.product_name,
+          total_amount: action.data.total_amount.toFixed(2),
+          item_count: action.data.item_count || 1
+        }
+      }
+    }
+    
+    // 添加到消息列表
+    chatStore.messages.push(orderCardMessage)
+    
+    // 自动发送订单咨询
+    inputMessage.value = `我要咨询订单 ${action.data.order_no}`
+    sendMessage()
+  } else if (action.type === 'button') {
+    // 普通按钮 - 根据action类型处理
+    console.log('点击了普通按钮, action.action:', action.action)
+    if (action.action === 'send_question' && action.data?.question) {
+      // 发送预设问题
+      inputMessage.value = action.data.question
+      sendMessage()
+    } else if (action.action === 'select_order') {
+      // 选择订单 - 发送订单信息
+      const orderNo = action.data?.order_no || ''
+      inputMessage.value = `我要咨询订单 ${orderNo}`
+      sendMessage()
+    } else if (action.action === 'open_order_selector') {
+      // 打开订单选择弹窗
+      console.log('打开订单选择弹窗')
+      orderSelectorVisible.value = true
+    } else if (action.action === 'navigate') {
+      // 页面跳转
+      const path = action.data?.path
+      if (path) {
+        router.push(path)
+      }
+    } else if (action.action === 'view_all_recommendations') {
+      inputMessage.value = '查看全部推荐'
+      sendMessage()
+    } else if (action.action === 'refresh_recommendations') {
+      inputMessage.value = '换一批推荐'
+      sendMessage()
+    } else if (action.data?.question) {
+      // 兼容旧格式
+      inputMessage.value = action.data.question
+      sendMessage()
+    }
+  } else if (action.type === 'link') {
+    // 链接 - 打开URL
+    if (action.data?.url) {
+      window.open(action.data.url, '_blank')
+    }
+  }
 }
 </script>
 
@@ -625,6 +959,313 @@ const formatTime = (time: string) => {
   color: var(--text);
 }
 
+/* 用户发送的订单卡片样式 */
+.user-order-card {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(2, 6, 23, 0.3);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 10px;
+}
+
+.user-order-card .order-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(56, 189, 248, 0.3);
+}
+
+.user-order-card .order-no {
+  font-size: 12px;
+  color: var(--text);
+  font-family: monospace;
+  opacity: 0.8;
+}
+
+.user-order-card .order-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: rgba(56, 189, 248, 0.2);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.user-order-card .order-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.user-order-card .product-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.user-order-card .order-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+/* 快速操作按钮样式 */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.quick-action-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.quick-action-item:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateX(4px);
+  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35);
+}
+
+/* 订单卡片样式 */
+.quick-action-item.order_card,
+.quick-action-item.order_card_simple {
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.quick-action-item.order_card:hover,
+.quick-action-item.order_card_simple:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.4);
+}
+
+/* 简洁订单卡片内容 */
+.order-card-simple-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-card-simple-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.order-no-simple {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: monospace;
+}
+
+.order-status-simple {
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.order-status-simple.status-pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: #f59e0b;
+}
+
+.order-status-simple.status-paid {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.order-status-simple.status-shipped {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.order-status-simple.status-delivered,
+.order-status-simple.status-completed {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.order-status-simple.status-cancelled {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.order-card-simple-body {
+  padding: 4px 0;
+}
+
+.product-name-simple {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.order-card-simple-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.order-amount-simple {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.order-time-simple {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 原订单卡片样式 */
+.order-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.order-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.order-no {
+  font-size: 13px;
+  color: var(--muted);
+  font-family: monospace;
+}
+
+.order-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.order-status.status-pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: #f59e0b;
+}
+
+.order-status.status-paid {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.order-status.status-shipped {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.order-status.status-delivered,
+.order-status.status-completed {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.order-status.status-cancelled {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.order-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.product-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.product-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.item-count {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 8px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+}
+
+.order-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.order-amount {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.order-time {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 商品卡片样式 */
+.quick-action-item.product {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.quick-action-item.product:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.action-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.action-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.action-arrow {
+  font-size: 16px;
+  color: var(--muted);
+  transition: transform 0.3s ease;
+}
+
+.quick-action-item:hover .action-arrow {
+  transform: translateX(4px);
+  color: var(--accent);
+}
+
 .selected-files {
   padding: 16px 24px;
   border-top: 1px solid var(--border);
@@ -727,6 +1368,26 @@ const formatTime = (time: string) => {
 .upload-btn :deep(.el-button:hover) {
   transform: scale(1.05);
   box-shadow: 0 12px 26px rgba(2, 6, 23, 0.55);
+}
+
+.order-btn {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 20px;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.4);
+}
+
+.order-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.55);
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
 }
 
 .input-area :deep(.el-textarea__inner) {

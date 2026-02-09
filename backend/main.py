@@ -13,14 +13,20 @@ from services.redis_cache import redis_cache
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时
-    await redis_cache.connect()
-    print("✅ Redis连接成功")
+    try:
+        await redis_cache.connect()
+        print("✅ Redis连接成功")
+    except Exception as e:
+        print(f"⚠️  Redis连接失败（将使用内存缓存）: {e}")
     
     yield
     
     # 关闭时
-    await redis_cache.disconnect()
-    print("✅ Redis连接已关闭")
+    try:
+        await redis_cache.disconnect()
+        print("✅ Redis连接已关闭")
+    except Exception as e:
+        print(f"⚠️  Redis断开连接失败: {e}")
 
 
 # 创建FastAPI应用

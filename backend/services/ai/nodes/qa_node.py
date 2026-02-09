@@ -26,11 +26,14 @@ class QANode(BaseNode):
                     if text:
                         attachment_texts.append(f"【附件：{att.get('file_name', '未知文件')}】\n{text[:5000]}")
 
-        # 检索相关文档
+        # 检索相关文档 - 使用高级RAG
         docs = await knowledge_retriever.retrieve(
             query=state["user_message"],
             collection_name="knowledge_base",
-            top_k=settings.RETRIEVAL_TOP_K
+            top_k=settings.RETRIEVAL_TOP_K,
+            use_hybrid=settings.RAG_USE_HYBRID_SEARCH,
+            use_rerank=settings.RAG_USE_RERANK,
+            use_query_rewrite=settings.RAG_USE_QUERY_REWRITE
         )
 
         state["retrieved_docs"] = [

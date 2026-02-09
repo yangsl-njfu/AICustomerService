@@ -18,6 +18,7 @@ from services.session_service import SessionService
 from services.message_service import MessageService
 from services.ai.workflow import ai_workflow
 from services.attachment_service import AttachmentService
+from services.smart_questions_service import smart_questions_service
 
 router = APIRouter()
 security = HTTPBearer()
@@ -317,3 +318,56 @@ async def stream_message(
         await session_service.update_session_activity(db, message_data.session_id)
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/smart-questions")
+async def get_smart_questions(
+    mode: str = "fast",  # fast=快速规则, smart=AI生成
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取智能推荐的快速问题
+    
+    Args:
+        mode: 生成模式
+            - fast: 快速模式,基于规则生成(0.1秒)
+            - smart: 智能模式,使用AI生成(3-5秒,有缓存)
+    """
+    try:
+        # 获取最近订单(用于规则判断)
+        from services.order_service import OrderService
+        order_service = OrderService(db)
+        recent_orders_result = await order_service.list_orders(user_id=user_id, page=1, page_size=5)
+        recent_orders = recent_orders_result.get("items", [])
+        
+        # 转换订单格式
+        order_data = []
+        for order in recent_orders:
+            order_data.append({
+                "status": order.get("status"),
+                "product_name": order.get("items", [{}])[0].get("product_title", "") if order.get("items") else "",
+                "created_at": order.get("created_at")
+            })
+        
+        # 快速模式: 基于规则生成(不调用AI)
+        if mode == "fast":
+            questions = smart_questions_service._get_rule_based_questions(order_data)
+            return {"questions": questions, "mode": "fast"}
+        
+        # 智能模式: 使用AI生成(有缓存)
+        user_profile = {}  # TODO: 从用户服务获取
+        questions = await smart_questions_service.generate_smart_questions(
+            user_id=user_id,
+            user_profile=user_profile,
+            recent_orders=order_data,
+            browsing_history=None  # TODO: 添加浏览历史
+        )
+        
+        return {"questions": questions, "mode": "smart"}
+    
+    except Exception as e:
+        print(f"获取智能问题失败: {e}")
+        # 返回基于规则的问题
+        return {"questions": smart_questions_service._get_rule_based_questions(), "mode": "fallback"}
+

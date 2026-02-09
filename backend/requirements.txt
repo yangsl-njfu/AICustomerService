@@ -10,7 +10,7 @@ aioredis==2.0.1
 langchain==1.2.7
 langgraph==1.0.7
 langchain-openai==1.1.7
-chromadb==0.4.22
+faiss-cpu==1.8.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.0
@@ -28,3 +28,4 @@ httpx==0.26.0
 loguru==0.7.2
 aiofiles==24.1.0
 numpy==1.26.4
+rank-bm25==0.2.2

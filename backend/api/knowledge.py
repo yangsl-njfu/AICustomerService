@@ -87,12 +87,12 @@ async def list_knowledge_documents(
         return [
             KnowledgeDocumentResponse(
                 id=doc["doc_id"],
-                title=doc["file_name"],
-                description="",
+                title=doc.get("title", doc["file_name"]),
+                description=doc.get("description", ""),
                 file_name=doc["file_name"],
                 file_type=doc["file_type"],
                 file_size=doc["file_size"],
-                chunk_count=0,
+                chunk_count=doc.get("chunk_count", 0),
                 created_by=user_id,
                 status="active"
             )

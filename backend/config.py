@@ -1,6 +1,7 @@
 """
 应用配置模块
 """
+import os
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -28,10 +29,8 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: str = ""
     REDIS_DB: int = 0
     
-    # Chroma配置
-    CHROMA_PERSIST_DIRECTORY: str = "./data/chroma"
-    CHROMA_HOST: str = "localhost"
-    CHROMA_PORT: int = 8001
+    # FAISS配置
+    FAISS_PERSIST_DIRECTORY: str = "./data/faiss"
     
     # JWT配置
     JWT_SECRET_KEY: str = "your-secret-key-change-this"
@@ -50,6 +49,11 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 2000
     
+    # 硅基流动配置（用于 Embeddings）
+    SILICONFLOW_API_KEY: str = ""
+    SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    SILICONFLOW_EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    
     # 文件上传配置
     UPLOAD_DIR: str = "./data/uploads"
     MAX_FILE_SIZE: int = 10485760  # 10MB
@@ -61,14 +65,41 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 3
     REQUEST_TIMEOUT: int = 30
     
+    # 高级RAG配置
+    RAG_USE_HYBRID_SEARCH: bool = True  # 是否使用混合检索(向量+BM25)
+    RAG_USE_RERANK: bool = True  # 是否使用LLM重排序
+    RAG_USE_QUERY_REWRITE: bool = True  # 是否使用查询改写
+    RAG_RERANK_TOP_K: int = 10  # 重排序前保留的候选文档数
+    RAG_SIMILARITY_THRESHOLD: float = 0.7  # 相似度阈值
+    
     # CORS配置
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     
     @property
     def database_url(self) -> str:
         """获取数据库连接URL"""
-        # 使用 SQLite 替代 MySQL（本地开发）
-        return "sqlite+aiosqlite:///./data/app.db"
+        return f"mysql+aiomysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}?charset=utf8mb4"
+    
+    @property
+    def LLM_MODEL(self) -> str:
+        """根据provider返回对应的模型"""
+        if self.LLM_PROVIDER == "deepseek":
+            return self.DEEPSEEK_MODEL
+        return self.OPENAI_MODEL
+    
+    @property
+    def LLM_API_KEY(self) -> str:
+        """根据provider返回对应的API Key"""
+        if self.LLM_PROVIDER == "deepseek":
+            return self.DEEPSEEK_API_KEY
+        return self.OPENAI_API_KEY
+    
+    @property
+    def LLM_BASE_URL(self) -> str:
+        """根据provider返回对应的Base URL"""
+        if self.LLM_PROVIDER == "deepseek":
+            return self.DEEPSEEK_BASE_URL
+        return self.OPENAI_BASE_URL
     
     @property
     def redis_url(self) -> str:
@@ -88,7 +119,8 @@ class Settings(BaseSettings):
         return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",")]
     
     class Config:
-        env_file = ".env"
+        # 尝试多个可能的 .env 文件位置
+        env_file = ".env" if os.path.exists(".env") else "backend/.env"
         case_sensitive = True
 
 

@@ -9,7 +9,7 @@ from datetime import datetime
 
 from config.loader import config_loader
 from adapters import EcommerceAdapter
-from plugins import plugin_manager
+# from plugins import plugin_manager  # TODO: 实现插件管理器
 from services.ai.workflow import ai_workflow
 
 router = APIRouter(prefix="/api/v1/gateway", tags=["gateway"])
@@ -77,8 +77,8 @@ class BusinessAdapter:
         # 缓存适配器
         cls._adapters[business_id] = adapter
         
-        # 设置插件管理器的适配器
-        plugin_manager.set_adapter(adapter)
+        # TODO: 设置插件管理器的适配器
+        # plugin_manager.set_adapter(adapter)
         
         return adapter
 
@@ -98,8 +98,8 @@ async def send_message(request: ChatRequest):
         # 获取业务适配器
         adapter = BusinessAdapter.get_adapter(request.business_id)
         
-        # 设置插件管理器的适配器
-        plugin_manager.set_adapter(adapter)
+        # TODO: 设置插件管理器的适配器
+        # plugin_manager.set_adapter(adapter)
         
         # 处理消息
         result = await ai_workflow.process_message(
@@ -190,4 +190,5 @@ async def list_plugins():
     Returns:
         插件列表
     """
-    return {"plugins": plugin_manager.list_plugins()}
+    # TODO: 实现插件管理器
+    return {"plugins": []}

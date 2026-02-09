@@ -4,6 +4,7 @@
 """
 import os
 import uuid
+import json
 from typing import List, Dict, Optional, Any
 from pathlib import Path
 from fastapi import UploadFile
@@ -24,6 +25,10 @@ class KnowledgeService:
     def __init__(self):
         self.upload_dir = Path(settings.UPLOAD_DIR) / "knowledge"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 元数据文件，用于存储文档信息
+        self.metadata_file = self.upload_dir / "metadata.json"
+        self._load_metadata()
 
         # 文本分割器
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -32,6 +37,19 @@ class KnowledgeService:
             length_function=len,
             separators=["\n\n", "\n", "。", "，", " ", ""]
         )
+    
+    def _load_metadata(self):
+        """加载元数据"""
+        if self.metadata_file.exists():
+            with open(self.metadata_file, 'r', encoding='utf-8') as f:
+                self.metadata = json.load(f)
+        else:
+            self.metadata = {}
+    
+    def _save_metadata(self):
+        """保存元数据"""
+        with open(self.metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(self.metadata, f, ensure_ascii=False, indent=2)
 
     def _get_file_extension(self, filename: str) -> str:
         """获取文件扩展名"""
@@ -62,73 +80,119 @@ class KnowledgeService:
         Returns:
             文档信息字典
         """
-        # 检查文件类型
-        if not self._is_allowed_file(file.filename):
-            raise ValueError(f"不支持的文件类型。允许的类型：pdf, doc, docx, txt, md")
+        try:
+            print(f"[DEBUG] 开始上传文档: {file.filename}")
+            
+            # 检查文件类型
+            if not self._is_allowed_file(file.filename):
+                raise ValueError(f"不支持的文件类型。允许的类型：pdf, doc, docx, txt, md")
 
-        # 检查文件大小
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
+            print(f"[DEBUG] 文件类型检查通过")
 
-        if file_size > settings.MAX_FILE_SIZE:
-            raise ValueError(f"文件大小超过限制（最大{settings.MAX_FILE_SIZE / 1024 / 1024}MB）")
+            # 检查文件大小
+            file.file.seek(0, 2)
+            file_size = file.file.tell()
+            file.file.seek(0)
 
-        # 生成文档ID
-        doc_id = str(uuid.uuid4())
-        ext = self._get_file_extension(file.filename)
-        new_filename = f"{doc_id}.{ext}"
-        file_path = self.upload_dir / new_filename
+            if file_size > settings.MAX_FILE_SIZE:
+                raise ValueError(f"文件大小超过限制（最大{settings.MAX_FILE_SIZE / 1024 / 1024}MB）")
 
-        # 保存文件
-        content = await file.read()
-        async with aiofiles.open(file_path, 'wb') as f:
-            await f.write(content)
+            print(f"[DEBUG] 文件大小检查通过: {file_size} bytes")
 
-        # 提取文本
-        text_content = await self._extract_text(str(file_path), ext)
+            # 生成文档ID
+            doc_id = str(uuid.uuid4())
+            ext = self._get_file_extension(file.filename)
+            new_filename = f"{doc_id}.{ext}"
+            file_path = self.upload_dir / new_filename
 
-        if not text_content.strip():
-            # 删除空文件
-            os.remove(file_path)
-            raise ValueError("无法从文件中提取文本内容")
+            print(f"[DEBUG] 文档ID: {doc_id}, 保存路径: {file_path}")
 
-        # 分割文本为 chunks
-        chunks = self._split_text(text_content)
+            # 保存文件
+            content = await file.read()
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(content)
 
-        # 准备文档数据
-        documents = []
-        for i, chunk in enumerate(chunks):
-            documents.append({
-                "id": f"{doc_id}_{i}",
-                "content": chunk,
-                "metadata": {
-                    "doc_id": doc_id,
-                    "doc_title": title or file.filename,
-                    "doc_description": description or "",
-                    "file_name": file.filename,
-                    "file_type": ext,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                    "uploaded_by": user_id,
-                    "source": "knowledge_upload"
-                }
-            })
+            print(f"[DEBUG] 文件保存成功")
 
-        # 添加到向量数据库
-        if knowledge_retriever.available:
-            await knowledge_retriever.add_documents(documents, "knowledge_base")
+            # 提取文本
+            text_content = await self._extract_text(str(file_path), ext)
 
-        return {
-            "doc_id": doc_id,
-            "title": title or file.filename,
-            "description": description or "",
-            "file_name": file.filename,
-            "file_type": ext,
-            "file_size": file_size,
-            "chunk_count": len(chunks),
-            "file_path": str(file_path)
-        }
+            print(f"[DEBUG] 文本提取成功，长度: {len(text_content)}")
+
+            if not text_content.strip():
+                # 删除空文件
+                os.remove(file_path)
+                raise ValueError("无法从文件中提取文本内容")
+
+            # 分割文本为 chunks
+            chunks = self._split_text(text_content)
+
+            print(f"[DEBUG] 文本分割完成，chunks数量: {len(chunks)}")
+
+            # 准备文档数据
+            documents = []
+            for i, chunk in enumerate(chunks):
+                documents.append({
+                    "id": f"{doc_id}_{i}",
+                    "content": chunk,
+                    "metadata": {
+                        "doc_id": doc_id,
+                        "doc_title": title or file.filename,
+                        "doc_description": description or "",
+                        "file_name": file.filename,
+                        "file_type": ext,
+                        "chunk_index": i,
+                        "total_chunks": len(chunks),
+                        "uploaded_by": user_id,
+                        "source": "knowledge_upload"
+                    }
+                })
+
+            print(f"[DEBUG] 文档数据准备完成")
+
+            # 添加到向量数据库
+            print(f"[DEBUG] knowledge_retriever.available: {knowledge_retriever.available}")
+            if knowledge_retriever.available:
+                try:
+                    print(f"[DEBUG] 开始添加文档到向量数据库")
+                    await knowledge_retriever.add_documents(documents, "knowledge_base")
+                    print(f"[DEBUG] 文档添加到向量数据库成功")
+                except Exception as e:
+                    print(f"[WARNING] 向量化失败，但文件已保存: {type(e).__name__}: {str(e)}")
+                    # 向量化失败不影响文件上传，继续执行
+            else:
+                print(f"[WARNING] knowledge_retriever 不可用，跳过向量化")
+
+            print(f"[DEBUG] 上传完成")
+            
+            # 保存元数据
+            self.metadata[doc_id] = {
+                "doc_id": doc_id,
+                "original_filename": file.filename,
+                "title": title or file.filename,
+                "description": description or "",
+                "file_type": ext,
+                "file_size": file_size,
+                "chunk_count": len(chunks),
+                "uploaded_by": user_id
+            }
+            self._save_metadata()
+
+            return {
+                "doc_id": doc_id,
+                "title": title or file.filename,
+                "description": description or "",
+                "file_name": file.filename,
+                "file_type": ext,
+                "file_size": file_size,
+                "chunk_count": len(chunks),
+                "file_path": str(file_path)
+            }
+        except Exception as e:
+            print(f"[ERROR] 上传文档失败: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     async def _extract_text(self, file_path: str, ext: str) -> str:
         """从文件提取文本"""
@@ -200,6 +264,11 @@ class KnowledgeService:
                 if file_path.exists():
                     os.remove(file_path)
                     break
+            
+            # 删除元数据
+            if doc_id in self.metadata:
+                del self.metadata[doc_id]
+                self._save_metadata()
 
             return True
         except Exception as e:
@@ -208,20 +277,52 @@ class KnowledgeService:
 
     async def list_documents(self) -> List[Dict[str, Any]]:
         """列出所有知识库文档"""
-        documents = []
+        try:
+            print(f"[DEBUG] 列出文档，目录: {self.upload_dir}")
+            documents = []
 
-        for file_path in self.upload_dir.iterdir():
-            if file_path.is_file():
-                stat = file_path.stat()
-                documents.append({
-                    "doc_id": file_path.stem,
-                    "file_name": file_path.name,
-                    "file_type": file_path.suffix[1:],
-                    "file_size": stat.st_size,
-                    "created_at": stat.st_ctime
-                })
+            if not self.upload_dir.exists():
+                print(f"[WARNING] 上传目录不存在: {self.upload_dir}")
+                return documents
 
-        return documents
+            for file_path in self.upload_dir.iterdir():
+                if file_path.is_file() and file_path.name != "metadata.json":
+                    doc_id = file_path.stem
+                    stat = file_path.stat()
+                    
+                    # 从元数据中获取信息
+                    if doc_id in self.metadata:
+                        meta = self.metadata[doc_id]
+                        documents.append({
+                            "doc_id": doc_id,
+                            "file_name": meta.get("original_filename", file_path.name),
+                            "title": meta.get("title", meta.get("original_filename", file_path.name)),
+                            "description": meta.get("description", ""),
+                            "file_type": file_path.suffix[1:],
+                            "file_size": stat.st_size,
+                            "chunk_count": meta.get("chunk_count", 0),
+                            "created_at": stat.st_ctime
+                        })
+                    else:
+                        # 如果没有元数据，使用文件信息
+                        documents.append({
+                            "doc_id": doc_id,
+                            "file_name": file_path.name,
+                            "title": file_path.name,
+                            "description": "",
+                            "file_type": file_path.suffix[1:],
+                            "file_size": stat.st_size,
+                            "chunk_count": 0,
+                            "created_at": stat.st_ctime
+                        })
+
+            print(f"[DEBUG] 找到 {len(documents)} 个文档")
+            return documents
+        except Exception as e:
+            print(f"[ERROR] 列出文档失败: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
 
 # 全局知识库服务实例

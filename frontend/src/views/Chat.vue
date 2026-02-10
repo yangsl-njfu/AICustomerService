@@ -510,9 +510,9 @@ const handleOrderSelect = async (order: any) => {
     }
     chatStore.messages.push(assistantMessage)
 
-    // 使用流式API
+    // 使用流式API（直连后端，绕过 Vite 代理的 SSE 缓冲）
     const token = localStorage.getItem('access_token')
-    const response = await fetch('/api/chat/stream', {
+    const response = await fetch('http://localhost:8001/api/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

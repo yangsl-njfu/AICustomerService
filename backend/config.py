@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 2000
     
+    # 意图识别模型配置（可独立配置，不填则复用主模型）
+    INTENT_MODEL: str = ""
+    INTENT_MODEL_PROVIDER: str = ""
+    INTENT_API_KEY: str = ""
+    INTENT_TEMPERATURE: float = 0.1
+    INTENT_MAX_TOKENS: int = 200
+    
     # 硅基流动配置（用于 Embeddings）
     SILICONFLOW_API_KEY: str = ""
     SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
@@ -126,3 +133,18 @@ class Settings(BaseSettings):
 
 # 全局配置实例
 settings = Settings()
+
+
+def init_intent_model():
+    """初始化意图识别专用LLM"""
+    from langchain.chat_models import init_chat_model as _init_chat_model
+    model = settings.INTENT_MODEL or settings.DEEPSEEK_MODEL
+    provider = settings.INTENT_MODEL_PROVIDER or "deepseek"
+    api_key = settings.INTENT_API_KEY or settings.DEEPSEEK_API_KEY
+    return _init_chat_model(
+        model=model,
+        model_provider=provider,
+        temperature=settings.INTENT_TEMPERATURE,
+        max_tokens=settings.INTENT_MAX_TOKENS,
+        api_key=api_key,
+    )

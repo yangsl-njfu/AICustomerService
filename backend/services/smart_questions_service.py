@@ -3,9 +3,8 @@
 根据用户画像、订单历史、浏览记录等智能推荐问题
 """
 from typing import List, Dict, Any, Optional
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from config import settings
+from config import settings, init_chat_model
 import json
 import hashlib
 from datetime import datetime, timedelta
@@ -16,22 +15,7 @@ class SmartQuestionsService:
     
     def __init__(self):
         # 初始化LLM
-        if settings.LLM_PROVIDER == "deepseek":
-            self.llm = ChatOpenAI(
-                model=settings.DEEPSEEK_MODEL,
-                temperature=0.7,
-                max_tokens=500,
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url=settings.DEEPSEEK_BASE_URL
-            )
-        else:
-            self.llm = ChatOpenAI(
-                model=settings.OPENAI_MODEL,
-                temperature=0.7,
-                max_tokens=500,
-                api_key=settings.OPENAI_API_KEY,
-                base_url=settings.OPENAI_BASE_URL
-            )
+        self.llm = init_chat_model(temperature=0.7, max_tokens=500)
         
         # 内存缓存 (生产环境应使用Redis)
         self._cache: Dict[str, Dict[str, Any]] = {}

@@ -240,9 +240,9 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value = [...messages.value, assistantMessage]
 
-      // 使用 EventSource 接收流式数据
+      // 使用 EventSource 接收流式数据（直连后端，绕过 Vite 代理的 SSE 缓冲）
       const token = localStorage.getItem('access_token')
-      const response = await fetch('/api/chat/stream', {
+      const response = await fetch('http://localhost:8001/api/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

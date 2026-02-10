@@ -12,10 +12,10 @@ import json
 import pickle
 import numpy as np
 from pathlib import Path
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
-from config import settings
+from config import settings, init_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -207,12 +207,7 @@ class KnowledgeRetriever:
                     model=settings.SILICONFLOW_EMBEDDING_MODEL
                 )
 
-                self.llm = ChatOpenAI(
-                    model=settings.LLM_MODEL,
-                    temperature=0,
-                    openai_api_key=settings.LLM_API_KEY,
-                    openai_api_base=settings.LLM_BASE_URL
-                )
+                self.llm = init_chat_model(temperature=0)
                 self.knowledge_collection = FAISSCollection("knowledge_base", persist_dir)
                 self.product_collection = FAISSCollection("product_catalog", persist_dir)
 
@@ -356,6 +351,15 @@ class KnowledgeRetriever:
         use_hybrid: bool = True, use_rerank: bool = True, use_query_rewrite: bool = True
     ) -> List[Document]:
         if not self.available or not self.embeddings:
+            return []
+        # 知识库为空时直接返回，跳过所有 LLM 调用（query_rewrite、rerank 等）
+        collection = (
+            self.knowledge_collection
+            if collection_name == "knowledge_base"
+            else self.product_collection
+        )
+        if collection.count() == 0:
+            logger.info(f"集合 '{collection_name}' 为空，跳过检索")
             return []
         try:
             all_docs_with_scores = []

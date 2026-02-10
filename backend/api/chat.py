@@ -1,12 +1,15 @@
 """
 对话API路由
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
+from starlette.types import Receive, Scope, Send
 from typing import List
 import json
+import asyncio
 
 from database import get_db
 from schemas import (
@@ -201,6 +204,39 @@ async def send_message(
     )
 
 
+class SSEResponse(Response):
+    """手动控制 ASGI send 的 SSE 响应，确保每个事件立即 flush"""
+
+    def __init__(self, handler, status_code=200):
+        self.handler = handler
+        self.status_code = status_code
+        self.background = None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        await send({
+            "type": "http.response.start",
+            "status": self.status_code,
+            "headers": [
+                [b"content-type", b"text/event-stream; charset=utf-8"],
+                [b"cache-control", b"no-cache, no-store"],
+                [b"connection", b"keep-alive"],
+                [b"x-accel-buffering", b"no"],
+            ],
+        })
+
+        async def send_event(data: dict):
+            payload = f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+            await send({
+                "type": "http.response.body",
+                "body": payload.encode("utf-8"),
+                "more_body": True,
+            })
+
+        await self.handler(send_event)
+
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
 @router.post("/stream")
 async def stream_message(
     message_data: MessageCreate,
@@ -215,8 +251,8 @@ async def stream_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="会话不存在"
         )
-    
-    async def event_generator():
+
+    async def handle_stream(send_event):
         # 保存用户消息
         await message_service.save_message(
             db,
@@ -224,7 +260,7 @@ async def stream_message(
             role="user",
             content=message_data.message
         )
-        
+
         if session.message_count == 0:
             title = None
             if message_data.message.strip():
@@ -243,10 +279,10 @@ async def stream_message(
                     title = session_service.generate_session_title(base_name)
             if title:
                 await session_service.update_session_title(db, message_data.session_id, title)
-        
+
         # 发送开始事件
-        yield f"data: {json.dumps({'type': 'start'})}\n\n"
-        
+        await send_event({"type": "start"})
+
         # 构建附件信息
         attachment_info = []
         if message_data.attachments:
@@ -270,35 +306,27 @@ async def stream_message(
                     "file_size": file_size,
                     "file_path": file_path
                 })
-        
-        # 流式处理消息 - 实时生成内容
-        full_response = ""
-        intent = None
-        sources = None
-        quick_actions = None
-        recommended_products = None
-        
-        async for chunk in ai_workflow.process_message_stream(
+
+        # 阶段1: 意图识别
+        state = await ai_workflow.prepare_intent(
             user_id=user_id,
             session_id=message_data.session_id,
             message=message_data.message,
             attachments=attachment_info
-        ):
-            if chunk["type"] == "intent":
-                intent = chunk.get("intent")
-                yield f"data: {json.dumps(chunk)}\n\n"
-            elif chunk["type"] == "thinking":
-                yield f"data: {json.dumps(chunk)}\n\n"
-            elif chunk["type"] == "content":
-                full_response += chunk.get("delta", "")
-                yield f"data: {json.dumps(chunk)}\n\n"
-            elif chunk["type"] == "end":
-                sources = chunk.get("sources")
-                quick_actions = chunk.get("quick_actions")
-                recommended_products = chunk.get("recommended_products")
-                # 发送包含quick_actions的end事件
-                yield f"data: {json.dumps(chunk)}\n\n"
-        
+        )
+        intent = state.get("intent", "问答")
+        await send_event({"type": "intent", "intent": intent})
+
+        # 阶段2: 流式生成回答，逐 token 发送
+        full_response = ""
+        async for event in ai_workflow.generate_response_stream(state):
+            if event["type"] == "content":
+                full_response += event["delta"]
+                await send_event(event)
+            elif event["type"] == "end":
+                event["processing_time"] = 0
+                await send_event(event)
+
         # 保存AI回复到数据库
         if full_response:
             await message_service.save_message(
@@ -308,16 +336,16 @@ async def stream_message(
                 content=full_response,
                 metadata={
                     "intent": intent,
-                    "sources": sources,
-                    "quick_actions": quick_actions,
-                    "recommended_products": recommended_products
+                    "sources": state.get("sources"),
+                    "quick_actions": state.get("quick_actions"),
+                    "recommended_products": state.get("recommended_products")
                 }
             )
-        
+
         # 更新会话活动时间
         await session_service.update_session_activity(db, message_data.session_id)
-    
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    return SSEResponse(handle_stream)
 
 
 @router.get("/smart-questions")

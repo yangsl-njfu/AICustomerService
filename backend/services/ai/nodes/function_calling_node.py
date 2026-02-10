@@ -16,6 +16,14 @@ class FunctionCallingNode(BaseNode):
     
     async def execute(self, state: ConversationState) -> ConversationState:
         """执行Function Calling"""
+        # 不需要工具调用的意图，直接跳过 LLM
+        skip_intents = {"问答", "文档分析", "工单"}
+        if state.get("intent") in skip_intents:
+            state["tool_result"] = None
+            state["tool_used"] = None
+            logger.info(f"⚡ 跳过工具调用 (意图: {state.get('intent')})")
+            return state
+
         # 获取可用工具
         tools_schema = function_tool_manager.get_tools_schema()
         

@@ -85,6 +85,22 @@ async def get_session(
     return session
 
 
+@router.post("/session/{session_id}/delete")
+async def remove_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """删除会话及其所有消息"""
+    deleted = await session_service.delete_session(db, session_id, user_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="会话不存在"
+        )
+    return {"message": "会话已删除"}
+
+
 @router.get("/session/{session_id}/messages", response_model=List[MessageResponse])
 async def get_session_messages(
     session_id: str,

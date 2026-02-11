@@ -30,6 +30,14 @@ class ConversationState(TypedDict):
     recommended_products: Optional[List[str]]
     quick_actions: Optional[List[Dict]]  # 快速操作按钮
     
+    # 多轮对话意图追踪
+    intent_history: Optional[List[Dict[str, Any]]]
+    # 格式: [{"intent": "商品咨询", "confidence": 0.9, "turn": 3, "timestamp": "..."}, ...]
+
+    # 对话摘要
+    conversation_summary: Optional[str]
+    # 格式: 纯文本摘要字符串
+
     # 元数据
     timestamp: str
     processing_time: Optional[float]

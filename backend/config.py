@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 3
     REQUEST_TIMEOUT: int = 30
     
+    # 意图追踪配置
+    INTENT_HISTORY_SIZE: int = 5  # 提供给 LLM 的意图历史条数
+    INTENT_FALLBACK_THRESHOLD: float = 0.6  # 回退到历史意图的置信度阈值
+    
+    # 对话摘要配置
+    SUMMARY_TRIGGER_THRESHOLD: int = 10  # 触发摘要的对话轮数阈值
+    CONTEXT_MAX_TOKENS: int = 3000  # 上下文最大 token 数
+    
     # 高级RAG配置
     RAG_USE_HYBRID_SEARCH: bool = True  # 是否使用混合检索(向量+BM25)
     RAG_USE_RERANK: bool = True  # 是否使用LLM重排序

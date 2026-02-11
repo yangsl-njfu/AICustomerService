@@ -82,6 +82,21 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function deleteSession(sessionId: string) {
+    try {
+      await apiClient.post(`/chat/session/${sessionId}/delete`)
+      sessions.value = sessions.value.filter(s => s.id !== sessionId)
+      if (currentSession.value?.id === sessionId) {
+        currentSession.value = null
+        messages.value = []
+      }
+      return true
+    } catch (error) {
+      console.error('删除会话失败:', error)
+      return false
+    }
+  }
+
   async function selectSession(sessionId: string) {
     try {
       const session = sessions.value.find(s => s.id === sessionId)
@@ -242,7 +257,7 @@ export const useChatStore = defineStore('chat', () => {
 
       // 使用 EventSource 接收流式数据（直连后端，绕过 Vite 代理的 SSE 缓冲）
       const token = localStorage.getItem('access_token')
-      const response = await fetch('http://localhost:8001/api/chat/stream', {
+      const response = await fetch('http://localhost:8000/api/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -396,6 +411,7 @@ export const useChatStore = defineStore('chat', () => {
     loading,
     fetchSessions,
     createSession,
+    deleteSession,
     selectSession,
     fetchMessages,
     sendMessage,

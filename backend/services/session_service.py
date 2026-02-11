@@ -74,6 +74,23 @@ class SessionService:
             session.message_count += 1
             await db.commit()
     
+    async def delete_session(self, db: AsyncSession, session_id: str, user_id: str) -> bool:
+        """删除会话及其所有消息"""
+        result = await db.execute(
+            select(Session).where(
+                Session.id == session_id,
+                Session.user_id == user_id
+            )
+        )
+        session = result.scalar_one_or_none()
+        
+        if not session:
+            return False
+        
+        await db.delete(session)
+        await db.commit()
+        return True
+
     async def update_session_title(self, db: AsyncSession, session_id: str, title: str):
         """更新会话标题"""
         result = await db.execute(select(Session).where(Session.id == session_id))
@@ -82,6 +99,24 @@ class SessionService:
         if session:
             session.title = title
             await db.commit()
+
+    async def delete_session(self, db: AsyncSession, session_id: str, user_id: str) -> bool:
+        """删除会话及其所有消息"""
+        result = await db.execute(
+            select(Session).where(
+                Session.id == session_id,
+                Session.user_id == user_id
+            )
+        )
+        session = result.scalar_one_or_none()
+
+        if not session:
+            return False
+
+        await db.delete(session)
+        await db.commit()
+        return True
+
     
     def generate_session_title(self, first_message: str, max_length: int = 20) -> str:
         """根据第一条消息生成会话标题"""

@@ -32,6 +32,8 @@ class MemoryCache:
             "history": data.get("history", []),
             "user_profile": data.get("user_profile", {}),
             "last_intent": data.get("last_intent"),
+            "intent_history": data.get("intent_history", []),
+            "conversation_summary": data.get("conversation_summary", ""),
             "updated_at": data.get("updated_at")
         }
 
@@ -40,7 +42,9 @@ class MemoryCache:
         session_id: str,
         history: Optional[List[Dict]] = None,
         user_profile: Optional[Dict] = None,
-        last_intent: Optional[str] = None
+        last_intent: Optional[str] = None,
+        intent_history: Optional[List[Dict]] = None,
+        conversation_summary: Optional[str] = None
     ):
         """更新会话上下文"""
         key = f"session:{session_id}:context"
@@ -52,6 +56,10 @@ class MemoryCache:
             existing["user_profile"] = user_profile
         if last_intent is not None:
             existing["last_intent"] = last_intent
+        if intent_history is not None:
+            existing["intent_history"] = intent_history
+        if conversation_summary is not None:
+            existing["conversation_summary"] = conversation_summary
 
         existing["updated_at"] = datetime.now().isoformat()
         self._cache[key] = existing

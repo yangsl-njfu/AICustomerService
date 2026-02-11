@@ -17,8 +17,18 @@
           :class="{ active: chatStore.currentSession?.id === session.id }"
           @click="selectSession(session.id)"
         >
-          <div class="session-title">{{ session.title }}</div>
-          <div class="session-info">{{ session.message_count }} 条消息</div>
+          <div class="session-content">
+            <div class="session-title">{{ session.title }}</div>
+            <div class="session-info">{{ session.message_count }} 条消息</div>
+          </div>
+          <el-button
+            class="session-delete-btn"
+            type="danger"
+            link
+            @click.stop="deleteSession(session.id)"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
         </div>
       </div>
     </div>
@@ -250,7 +260,7 @@
 import { ref, onMounted, nextTick, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
-import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag } from '@element-plus/icons-vue'
+import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag, Close } from '@element-plus/icons-vue'
 import { apiClient } from '@/api/client'
 import { ElMessage } from 'element-plus'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -288,6 +298,15 @@ const createNewSession = async () => {
 
 const selectSession = async (sessionId: string) => {
   await chatStore.selectSession(sessionId)
+}
+
+const deleteSession = async (sessionId: string) => {
+  const success = await chatStore.deleteSession(sessionId)
+  if (success) {
+    ElMessage.success('会话已删除')
+  } else {
+    ElMessage.error('删除失败')
+  }
 }
 
 // 处理文件选择
@@ -512,7 +531,7 @@ const handleOrderSelect = async (order: any) => {
 
     // 使用流式API（直连后端，绕过 Vite 代理的 SSE 缓冲）
     const token = localStorage.getItem('access_token')
-    const response = await fetch('http://localhost:8001/api/chat/stream', {
+    const response = await fetch('http://localhost:8000/api/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -769,6 +788,25 @@ const handleQuickAction = (action: any) => {
   background: var(--surface-3);
   border: 1px solid transparent;
   color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-delete-btn {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.session-item:hover .session-delete-btn {
+  opacity: 1;
 }
 
 .session-item:hover {

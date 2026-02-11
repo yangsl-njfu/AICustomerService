@@ -23,7 +23,8 @@ RAG_PROMPT = ChatPromptTemplate.from_messages([
 1. 优先参考用户上传的附件内容回答问题
 2. 如果附件中没有相关信息，再参考知识库内容
 3. 回答要准确、简洁、有帮助
-4. 保持友好专业的语气"""),
+4. 保持友好专业的语气
+{conversation_summary_section}"""),
     ("human", """知识库内容：
 {docs}
 
@@ -87,9 +88,17 @@ class QANode(BaseNode):
             for t in state["conversation_history"][-3:]
         ])
 
+        # 注入对话摘要（如果存在）
+        conversation_summary = state.get("conversation_summary", "")
+        if conversation_summary:
+            conversation_summary_section = f"\n对话历史摘要：\n{conversation_summary}"
+        else:
+            conversation_summary_section = ""
+
         return RAG_PROMPT.format_messages(
             docs=docs_text, attachments=attachment_content,
-            history=history_str, question=user_message
+            history=history_str, question=user_message,
+            conversation_summary_section=conversation_summary_section
         )
 
     async def execute(self, state: ConversationState) -> ConversationState:

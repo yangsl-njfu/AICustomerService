@@ -17,9 +17,13 @@ class ContextNode(BaseNode):
         if context:
             state["conversation_history"] = context.get("history", [])
             state["user_profile"] = context.get("user_profile", {})
+            state["intent_history"] = context.get("intent_history", [])
+            state["conversation_summary"] = context.get("conversation_summary", "")
         else:
             state["conversation_history"] = []
             state["user_profile"] = {}
+            state["intent_history"] = []
+            state["conversation_summary"] = ""
         
         state["timestamp"] = datetime.now().isoformat()
         return state

@@ -2,6 +2,7 @@
 AI工作流编排器
 """
 import logging
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from langgraph.graph import StateGraph, END
@@ -38,7 +39,7 @@ class AIWorkflow:
         self.context_node = ContextNode()
         self.intent_node = IntentRecognitionNode(self.intent_llm)
         self.function_calling_node = FunctionCallingNode(self.llm)
-        self.save_context_node = SaveContextNode()
+        self.save_context_node = SaveContextNode(self.llm)
         self.qa_node = QANode(self.llm)
         self.document_node = DocumentNode(self.llm)
         self.ticket_node = TicketNode(self.llm)
@@ -106,7 +107,8 @@ class AIWorkflow:
             intent=None, confidence=None, retrieved_docs=None,
             tool_result=None, tool_used=None, response="",
             sources=None, ticket_id=None, recommended_products=None,
-            quick_actions=None, timestamp="", processing_time=None
+            quick_actions=None, timestamp="", processing_time=None,
+            intent_history=[], conversation_summary=""
         )
 
     async def process_message(self, user_id, session_id, message, attachments=None):
@@ -117,15 +119,26 @@ class AIWorkflow:
         final_state["processing_time"] = (datetime.now() - start_time).total_seconds()
         return final_state
     
+    # 支持流式输出的节点
+    _STREAM_NODES = {"qa_flow", "document_analysis", "purchase_guide", "clarify"}
     # 不调用 LLM 的节点
     _NO_LLM_RESPONSE_NODES = {"product_recommendation", "product_inquiry", "order_query"}
     _PRE_RESPONSE_NODES = {"intent_recognition", "function_calling", "load_context", "save_context"}
 
     async def prepare_intent(self, user_id, session_id, message, attachments=None):
         """阶段1: 前置处理 + 意图识别，返回 state"""
+        total_start = time.time()
         state = self._make_initial_state(user_id, session_id, message, attachments)
+
+        t0 = time.time()
         state = await self.context_node.execute(state)
+        print(f"⏱️ [context_node] {time.time() - t0:.2f}s", flush=True)
+
+        t0 = time.time()
         state = await self.intent_node.execute(state)
+        print(f"⏱️ [intent_node] {time.time() - t0:.2f}s  → intent={state.get('intent')}", flush=True)
+
+        print(f"⏱️ [prepare_intent 总计] {time.time() - total_start:.2f}s", flush=True)
         return state
 
     async def generate_response(self, state):
@@ -162,13 +175,26 @@ class AIWorkflow:
 
     async def generate_response_stream(self, state):
         """阶段2 流式版: function calling + 路由 + 逐 token yield 回答"""
+        t0 = time.time()
         state = await self.function_calling_node.execute(state)
-        route = self.router.route_after_function_calling(state)
+        print(f"⏱️ [function_calling_node] {time.time() - t0:.2f}s", flush=True)
 
-        # 只有 qa_node 支持流式，其他节点走普通 execute
-        if route == "qa_flow":
+        route = self.router.route_after_function_calling(state)
+        print(f"⏱️ [route] → {route}", flush=True)
+
+        # 支持流式的节点使用 execute_stream
+        stream_node_map = {
+            "qa_flow": self.qa_node,
+            "document_analysis": self.document_node,
+            "purchase_guide": self.purchase_guide_node,
+            "clarify": self.clarify_node,
+        }
+
+        t0 = time.time()
+        if route in stream_node_map:
+            node = stream_node_map[route]
             try:
-                async for token in self.qa_node.execute_stream(state):
+                async for token in node.execute_stream(state):
                     yield {"type": "content", "delta": token}
             except Exception as e:
                 logger.error(f"流式生成失败: {e}")
@@ -179,10 +205,7 @@ class AIWorkflow:
                 "product_recommendation": self.product_recommendation_node,
                 "product_inquiry": self.product_inquiry_node,
                 "order_query": self.order_query_node,
-                "clarify": self.clarify_node,
                 "ticket_flow": self.ticket_node,
-                "document_analysis": self.document_node,
-                "purchase_guide": self.purchase_guide_node,
             }
             node = node_map.get(route, self.qa_node)
             try:
@@ -193,12 +216,15 @@ class AIWorkflow:
                 state["response"] = "抱歉，处理您的请求时出现了问题，请稍后再试。"
             if state.get("response"):
                 yield {"type": "content", "delta": state["response"]}
+        print(f"⏱️ [{route} 节点] {time.time() - t0:.2f}s", flush=True)
 
+        t0 = time.time()
         if route != "clarify":
             try:
                 await self.save_context_node.execute(state)
             except Exception:
                 pass
+        print(f"⏱️ [save_context_node] {time.time() - t0:.2f}s", flush=True)
 
         yield {
             "type": "end",

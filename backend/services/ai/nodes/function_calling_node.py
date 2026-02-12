@@ -43,7 +43,7 @@ class FunctionCallingNode(BaseNode):
     async def execute(self, state: ConversationState) -> ConversationState:
         """执行Function Calling"""
         # 不需要工具调用的意图，直接跳过
-        skip_intents = {"问答", "文档分析", "工单", "购买指导", "商品推荐"}
+        skip_intents = {"问答", "文档分析", "工单", "购买指导"}
         if state.get("intent") in skip_intents or state.get("confidence", 0) < 0.6:
             state["tool_result"] = None
             state["tool_used"] = None

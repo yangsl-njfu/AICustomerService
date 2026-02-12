@@ -9,10 +9,15 @@ class Router:
     
     def route_after_function_calling(self, state: ConversationState) -> str:
         """Function Calling后的路由决策"""
+        intent = state.get("intent")
+        tool_used = state.get("tool_used")
+        
+        # 商品推荐意图优先，即使调用了搜索工具也走推荐节点
+        if intent == "商品推荐":
+            return "product_recommendation"
+        
         # 如果调用了工具，根据工具类型路由
-        if state.get("tool_used"):
-            tool_used = state["tool_used"]
-            
+        if tool_used:
             if "query_order" in tool_used or "get_logistics" in tool_used:
                 return "order_query"
             elif "search_products" in tool_used:

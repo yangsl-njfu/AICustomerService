@@ -89,6 +89,11 @@ const handleLogout = () => {
 .home-container {
   height: 100vh;
   background: var(--bg);
+  overflow: hidden;
+}
+
+.home-container :deep(.el-container) {
+  height: 100%;
 }
 
 .el-header {
@@ -156,11 +161,14 @@ const handleLogout = () => {
   background: var(--surface);
   border-right: 1px solid var(--border);
   padding: 16px 8px;
+  overflow: hidden;
 }
 
 .el-aside :deep(.el-menu) {
   border-right: none;
   background: transparent;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .el-aside :deep(.el-menu-item) {
@@ -200,7 +208,7 @@ const handleLogout = () => {
 .el-main {
   padding: 0;
   background: var(--bg);
-  overflow-y: auto;
+  overflow: hidden;
   height: calc(100vh - 60px);
 }
 </style>

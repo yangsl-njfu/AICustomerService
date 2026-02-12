@@ -159,6 +159,25 @@
                     </div>
                     <el-icon class="action-arrow"><ArrowRight /></el-icon>
                   </template>
+
+                  <!-- 商品卡片样式 -->
+                  <template v-else-if="action.type === 'product'">
+                    <div class="product-card-content">
+                      <div class="product-card-header">
+                        <span class="product-card-title">{{ action.data.title }}</span>
+                        <span class="product-card-price">¥{{ action.data.price.toFixed(2) }}</span>
+                      </div>
+                      <div class="product-card-meta">
+                        <span class="product-card-rating">⭐ {{ action.data.rating }}</span>
+                        <span class="product-card-sales">已售 {{ action.data.sales_count }}</span>
+                      </div>
+                      <div v-if="action.data.tech_stack && action.data.tech_stack.length > 0" class="product-card-tech">
+                        <span v-for="(tech, tIndex) in action.data.tech_stack.slice(0, 4)" :key="tIndex">{{ tech }}</span>
+                      </div>
+                      <div v-if="action.data.description" class="product-card-desc">{{ action.data.description }}</div>
+                    </div>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
                   
                   <!-- 普通按钮样式 -->
                   <template v-else>
@@ -236,7 +255,8 @@
         <el-input
           v-model="inputMessage"
           type="textarea"
-          :rows="3"
+          :rows="1"
+          :autosize="{ minRows: 1, maxRows: 4 }"
           placeholder="输入消息... 或直接拖拽文件到此处"
           @keydown.enter.exact.prevent="handleEnterKey"
         />
@@ -735,10 +755,11 @@ const handleQuickAction = (action: any) => {
 <style scoped>
 .chat-container {
   display: flex;
-  height: 100vh;
+  height: 100%;
   background: var(--bg);
   padding: 20px;
   gap: 20px;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -849,6 +870,7 @@ const handleQuickAction = (action: any) => {
   box-shadow: var(--shadow);
   overflow: hidden;
   border: 1px solid var(--border);
+  min-height: 0;
 }
 
 .chat-header {
@@ -870,6 +892,7 @@ const handleQuickAction = (action: any) => {
   overflow-y: auto;
   padding: 28px;
   background: var(--surface-3);
+  min-height: 0;
 }
 
 .message-item {
@@ -1276,11 +1299,85 @@ const handleQuickAction = (action: any) => {
 .quick-action-item.product {
   background: rgba(56, 189, 248, 0.1);
   border-color: rgba(56, 189, 248, 0.3);
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px;
+  gap: 8px;
 }
 
 .quick-action-item.product:hover {
   background: rgba(56, 189, 248, 0.2);
   border-color: rgba(56, 189, 248, 0.5);
+}
+
+.product-card-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.product-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.product-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  line-height: 1.4;
+}
+
+.product-card-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ef4444;
+  margin-left: 12px;
+}
+
+.product-card-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.product-card-rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #f59e0b;
+}
+
+.product-card-sales {
+  color: var(--muted);
+}
+
+.product-card-tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.product-card-tech span {
+  padding: 2px 8px;
+  background: rgba(56, 189, 248, 0.15);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.product-card-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 4px;
 }
 
 .action-icon {
@@ -1305,9 +1402,10 @@ const handleQuickAction = (action: any) => {
 }
 
 .selected-files {
-  padding: 16px 24px;
+  padding: 12px 32px;
   border-top: 1px solid var(--border);
   background: var(--surface-2);
+  flex-shrink: 0;
 }
 
 .selected-files-header {
@@ -1347,11 +1445,12 @@ const handleQuickAction = (action: any) => {
 .input-area {
   display: flex;
   gap: 16px;
-  padding: 24px 32px;
+  padding: 16px 32px;
   background: var(--surface);
-  align-items: flex-start;
+  align-items: center;
   position: relative;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .input-area.drag-over {
@@ -1430,12 +1529,14 @@ const handleQuickAction = (action: any) => {
 
 .input-area :deep(.el-textarea__inner) {
   border-radius: 14px;
-  padding: 16px 20px;
+  padding: 12px 16px;
   font-size: 15px;
   border: 1px solid var(--border);
   transition: all 0.3s ease;
   background: var(--surface-3);
   color: var(--text);
+  min-height: 48px !important;
+  max-height: 120px;
 }
 
 .input-area :deep(.el-textarea__inner:focus) {

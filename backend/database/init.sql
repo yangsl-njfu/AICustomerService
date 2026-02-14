@@ -334,6 +334,19 @@ CREATE TABLE IF NOT EXISTS favorites (
     INDEX idx_product (product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 20. 用户浏览历史表
+CREATE TABLE IF NOT EXISTS user_browse_history (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    product_id VARCHAR(36) NOT NULL,
+    view_duration INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_product_browse (user_id, product_id),
+    INDEX idx_user (user_id),
+    INDEX idx_product (product_id),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 插入默认管理员用户（密码: admin123，需要在应用中修改）
 INSERT INTO users (id, username, password_hash, email, role, is_active) 
 VALUES (

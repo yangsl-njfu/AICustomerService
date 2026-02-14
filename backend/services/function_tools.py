@@ -263,7 +263,45 @@ async def calculate_price(product_ids: list[str], coupon_code: str = None) -> di
         }
 
 
+@tool
+async def get_personalized_recommendations(user_id: str, limit: int = 5) -> dict:
+    """基于用户浏览历史获取个性化商品推荐。该工具会分析用户近期浏览过的商品，根据技术栈偏好推荐相关商品。
+
+    Args:
+        user_id: 用户的唯一标识ID
+        limit: 返回推荐商品数量，默认5个
+    """
+    print(f"🎯 [get_personalized_recommendations] user_id={user_id}, limit={limit}", flush=True)
+    from database.connection import get_db_context
+    from services.recommendation_service import RecommendationService
+
+    async with get_db_context() as db:
+        rec_service = RecommendationService(db)
+        
+        recommendations = await rec_service.get_personalized_recommendations(
+            user_id=user_id,
+            limit=limit
+        )
+        
+        if not recommendations:
+            popular = await rec_service.get_popular_products(limit=limit)
+            return {
+                "success": True,
+                "message": "暂无个性化推荐，为您推荐热门商品",
+                "products": popular,
+                "is_popular": True
+            }
+        
+        return {
+            "success": True,
+            "message": "为您推荐以下商品",
+            "products": recommendations,
+            "is_personalized": True
+        }
+
+
 # ==================== LangChain 工具列表 ====================
 
 all_tools = [query_order, search_products, get_user_info,
-             check_inventory, get_logistics, calculate_price]
+             check_inventory, get_logistics, calculate_price,
+             get_personalized_recommendations]

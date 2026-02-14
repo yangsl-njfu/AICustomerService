@@ -12,7 +12,11 @@ class Router:
         intent = state.get("intent")
         tool_used = state.get("tool_used")
         
-        # 商品推荐意图优先，即使调用了搜索工具也走推荐节点
+        # 个性化推荐（基于浏览历史）
+        if intent == "个性化推荐":
+            return "personalized_recommend"
+        
+        # 商品推荐
         if intent == "商品推荐":
             return "product_recommendation"
         
@@ -41,6 +45,7 @@ class Router:
             "商品推荐": "product_recommendation",
             "商品咨询": "product_inquiry",
             "购买指导": "purchase_guide",
-            "订单查询": "order_query"
+            "订单查询": "order_query",
+            "个性化推荐": "personalized_recommend"
         }
         return intent_map.get(state.get("intent"), "clarify")

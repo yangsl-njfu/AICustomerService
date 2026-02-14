@@ -96,6 +96,7 @@ class User(Base):
     reviews_given = relationship("Review", foreign_keys="Review.buyer_id", back_populates="buyer")
     reviews_received = relationship("Review", foreign_keys="Review.seller_id", back_populates="seller")
     favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
+    browse_history = relationship("UserBrowseHistory", back_populates="user", cascade="all, delete-orphan")
 
 
 
@@ -500,6 +501,26 @@ class Favorite(Base):
     # 唯一约束
     __table_args__ = (
         Index('uk_user_product_fav', 'user_id', 'product_id', unique=True),
+    )
+
+
+class UserBrowseHistory(Base):
+    """用户浏览历史模型"""
+    __tablename__ = "user_browse_history"
+    
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(String(36), ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    view_duration = Column(Integer, default=0)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp(), index=True)
+    
+    # 关系
+    user = relationship("User", back_populates="browse_history")
+    product = relationship("Product")
+    
+    # 唯一约束：同一用户对同一商品只记录一条
+    __table_args__ = (
+        Index('uk_user_product_browse', 'user_id', 'product_id', unique=True),
     )
 
 

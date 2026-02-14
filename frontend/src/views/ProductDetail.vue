@@ -63,11 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProductStore } from '@/stores/product'
 import { useCartStore } from '@/stores/cart'
 import { storeToRefs } from 'pinia'
+import { browseAPI } from '@/api/browse'
 
 const route = useRoute()
 const router = useRouter()
@@ -76,6 +77,7 @@ const cartStore = useCartStore()
 const { currentProduct } = storeToRefs(productStore)
 
 const activeTab = ref('description')
+const enterTime = ref<number>(0)
 
 const difficultyText = computed(() => {
   const map: Record<string, string> = {
@@ -89,6 +91,23 @@ const difficultyText = computed(() => {
 onMounted(async () => {
   const productId = route.params.id as string
   await productStore.fetchProductDetail(productId)
+  enterTime.value = Date.now()
+  try {
+    await browseAPI.recordBrowse(productId, 0)
+  } catch (e) {
+    console.log('记录浏览失败', e)
+  }
+})
+
+onUnmounted(async () => {
+  if (enterTime.value > 0 && currentProduct.value) {
+    const viewDuration = Math.floor((Date.now() - enterTime.value) / 1000)
+    try {
+      await browseAPI.recordBrowse(currentProduct.value.id, viewDuration)
+    } catch (e) {
+      console.log('更新浏览时长失败', e)
+    }
+  }
 })
 
 async function handleAddToCart() {

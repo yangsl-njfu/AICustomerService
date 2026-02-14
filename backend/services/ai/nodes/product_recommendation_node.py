@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 class ProductRecommendationNode(BaseNode):
     """商品推荐节点 - 根据用户需求推荐商品"""
     
+    def __init__(self, llm=None):
+        super().__init__(llm)
+    
     async def execute(self, state: ConversationState) -> ConversationState:
         """执行商品推荐 - 搜索并推荐商品"""
         
@@ -21,8 +24,10 @@ class ProductRecommendationNode(BaseNode):
         
         if tool_result:
             for tr in tool_result:
+                logger.info(f"🔍 tool_result: tool={tr.get('tool')}, result_keys={tr.get('result', {}).keys()}")
                 if tr.get("tool") == "search_products":
                     result = tr.get("result", {})
+                    logger.info(f"🔍 search_products result: {result}")
                     if result.get("success"):
                         products = result.get("products", [])
         
@@ -74,24 +79,39 @@ class ProductRecommendationNode(BaseNode):
                     }
                 })
             
-            tech_set = set()
-            for p in products:
-                for t in p.get("tech_stack", []):
-                    tech_set.add(t)
-            tech_str = "、".join(list(tech_set)[:5]) if tech_set else "各类技术"
-            
             import re
             keywords = re.findall(r'[\u4e00-\u9fa5a-zA-Z]+', user_message.lower())
             search_keyword = keywords[0] if keywords else None
             
-            if search_keyword and any(search_keyword.lower() in t.lower() or t.lower() in search_keyword.lower() for p in products for t in p.get("tech_stack", [])):
-                response_prefix = f"根据「{search_keyword}」为您找到以下商品："
-            else:
-                response_prefix = f"未找到完全匹配的商品，为您推荐以下热门商品："
+            product_titles = [p.get("title") for p in products[:3]]
+            products_desc = "、".join(product_titles)
             
-            state["response"] = f"""{response_prefix}
+            prompt = f"""用户说：「{user_message}」
 
-共 {len(products)} 个商品，涵盖 {tech_str} 等技术栈。"""
+你找到了以下商品：{products_desc}
+
+请为用户生成一句简短的推荐语（不超过30字），语气亲切自然，直接推荐商品，不要提及技术栈或浏览历史。
+
+示例：
+- "为您找到了几个优质项目，快来看看吧！"
+- "这些都是很受欢迎的作品，推荐给您~"
+- "给您挑选了几个不错的项目，看看有没有喜欢的"
+
+请直接输出推荐语，不要其他内容："""
+            
+            try:
+                from langchain_core.messages import HumanMessage
+                messages = [HumanMessage(content=prompt)]
+                response = await self.llm.ainvoke(messages)
+                llm_response = response.content.strip()
+                
+                if llm_response and len(llm_response) < 50:
+                    state["response"] = llm_response
+                else:
+                    state["response"] = f"为您找到了 {len(products)} 个优质项目，快来看看吧！"
+            except Exception as e:
+                logger.warning(f"LLM生成推荐语失败: {e}")
+                state["response"] = f"为您找到了 {len(products)} 个优质项目，快来看看吧！"
             
             state["quick_actions"] = product_cards + [
                 {

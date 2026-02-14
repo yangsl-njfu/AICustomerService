@@ -20,10 +20,18 @@ class FunctionCallingNode(BaseNode):
 
     def _build_messages(self, state: ConversationState) -> list:
         """构建发送给 LLM 的消息列表"""
+        user_id = state.get("user_id", "")
+        
         system_message = (
             "你是一个智能客服助手。根据用户的问题和意图，选择合适的工具来获取所需数据。\n"
-            "如果用户问题需要查询实时数据（订单、商品、用户信息、库存、物流、价格等），请调用对应的工具。\n"
-            "如果不需要调用工具，直接回复即可。"
+            "【意图与工具的对应关系】：\n"
+            "- 如果用户想要【个性化推荐】（根据我的浏览、猜我喜欢、有什么推荐），使用 get_personalized_recommendations 工具\n"
+            "- 如果用户想要【商品推荐】或【搜索商品】（推荐python、推荐java项目、找一个vue项目），使用 search_products 工具，keyword参数填入技术关键词（如python、java、vue）\n"
+            "- 如果用户想【查询订单】或【物流】，使用 query_order 或 get_logistics 工具\n"
+            "- 如果用户想【获取用户信息】，使用 get_user_info 工具\n"
+            "- 如果用户想【检查库存】或【计算价格】，使用 check_inventory 或 calculate_price 工具\n"
+            "- 其他情况如果不需要调用工具，直接回复即可\n"
+            f"当前用户ID: {user_id} (如果需要调用工具且需要用户ID，请使用此ID)"
         )
 
         messages = [("system", system_message)]
@@ -43,7 +51,7 @@ class FunctionCallingNode(BaseNode):
     async def execute(self, state: ConversationState) -> ConversationState:
         """执行Function Calling"""
         # 不需要工具调用的意图，直接跳过
-        skip_intents = {"问答", "文档分析", "工单", "购买指导"}
+        skip_intents = {"问答", "文档分析", "工单", "购买指导", "个性化推荐"}
         if state.get("intent") in skip_intents or state.get("confidence", 0) < 0.6:
             state["tool_result"] = None
             state["tool_used"] = None
@@ -78,6 +86,10 @@ class FunctionCallingNode(BaseNode):
                             "tool": tool_name,
                             "result": result
                         })
+                        if tool_name == "search_products":
+                            logger.info(f"🎯 搜索结果: {len(result.get('products', []))} 个商品")
+                            for p in result.get("products", [])[:3]:
+                                logger.info(f"   - {p.get('title', '')[:30]} | tech: {p.get('tech_stack', [])}")
                         logger.info(f"工具调用成功: {tool_name}")
                     except Exception as e:
                         logger.error(f"工具调用失败: {tool_name}, 错误: {e}")

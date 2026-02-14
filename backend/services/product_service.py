@@ -4,7 +4,7 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from database.models import Product, Category, ProductImage, ProductFile, ProductStatus, ProductDifficulty, User
 import uuid
 from datetime import datetime
@@ -108,22 +108,23 @@ class ProductService:
             .options(
                 joinedload(Product.seller),
                 joinedload(Product.category),
-                joinedload(Product.images),
-                joinedload(Product.files)
+                selectinload(Product.images),
+                selectinload(Product.files)
             )
             .where(Product.id == product_id)
         )
-        product = result.scalar_one_or_none()
+        product = result.scalars().first()
         
         if not product:
             return None
         
-        # 增加浏览量
+        product_dict = self._product_to_dict(product)
+        
         if increment_view:
             product.view_count += 1
             await self.db.commit()
         
-        return self._product_to_dict(product)
+        return product_dict
     
     async def search_products(
         self,
@@ -150,10 +151,12 @@ class ProductService:
         filters = []
         
         if keyword:
+            from sqlalchemy import cast, Text
             filters.append(
                 or_(
                     Product.title.contains(keyword),
-                    Product.description.contains(keyword)
+                    Product.description.contains(keyword),
+                    cast(Product.tech_stack, Text).contains(keyword)
                 )
             )
         

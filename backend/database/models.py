@@ -1,7 +1,7 @@
 """
 SQLAlchemy数据模型
 """
-from sqlalchemy import Column, String, Integer, Text, Boolean, Enum, TIMESTAMP, BigInteger, ForeignKey, JSON, Index
+from sqlalchemy import Column, String, Integer, Text, Boolean, Enum, TIMESTAMP, BigInteger, ForeignKey, JSON, Index, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .connection import Base
@@ -97,6 +97,8 @@ class User(Base):
     reviews_received = relationship("Review", foreign_keys="Review.seller_id", back_populates="seller")
     favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
     browse_history = relationship("UserBrowseHistory", back_populates="user", cascade="all, delete-orphan")
+    user_coupons = relationship("UserCoupon", back_populates="user", cascade="all, delete-orphan")
+    addresses = relationship("Address", back_populates="user", cascade="all, delete-orphan")
 
 
 
@@ -294,6 +296,34 @@ class TransactionStatus(str, enum.Enum):
     REFUNDED = "refunded"
 
 
+class RefundType(str, enum.Enum):
+    """售后类型枚举"""
+    REFUND_ONLY = "refund_only"       # 仅退款
+    RETURN_REFUND = "return_refund"   # 退货退款
+    EXCHANGE = "exchange"             # 换货
+
+
+class RefundStatus(str, enum.Enum):
+    """售后状态枚举"""
+    PENDING = "pending"               # 待审核
+    APPROVED = "approved"             # 已同意
+    REJECTED = "rejected"             # 已拒绝
+    RETURNING = "returning"           # 退货中
+    REFUNDING = "refunding"           # 退款中
+    COMPLETED = "completed"           # 已完成
+    CANCELLED = "cancelled"           # 已取消
+
+
+class RefundReason(str, enum.Enum):
+    """退款原因枚举"""
+    QUALITY_ISSUE = "quality_issue"           # 质量问题
+    NOT_AS_DESCRIBED = "not_as_described"     # 与描述不符
+    WRONG_ITEM = "wrong_item"                 # 发错商品
+    MISSING_PARTS = "missing_parts"           # 缺少部件
+    NO_LONGER_NEEDED = "no_longer_needed"     # 不想要了
+    OTHER = "other"                           # 其他原因
+
+
 class Category(Base):
     """商品分类模型"""
     __tablename__ = "categories"
@@ -422,6 +452,7 @@ class Order(Base):
     buyer = relationship("User", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="order", cascade="all, delete-orphan")
+    used_coupons = relationship("UserCoupon", back_populates="order")
 
 
 class OrderItem(Base):
@@ -460,6 +491,65 @@ class Transaction(Base):
     
     # 关系
     order = relationship("Order", back_populates="transactions")
+
+
+class Coupon(Base):
+    """优惠券模型"""
+    __tablename__ = "coupons"
+    
+    id = Column(String(36), primary_key=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    discount_type = Column(String(20), default="amount")  # amount: 固定金额, percent: 百分比
+    discount_amount = Column(Float, nullable=False)  # 优惠金额或百分比
+    min_amount = Column(Float, default=0)  # 最低消费金额
+    max_discount_amount = Column(Float)  # 最高优惠金额（百分比类型用）
+    total_count = Column(Integer, default=0)  # 发放总量
+    remain_count = Column(Integer, default=0)  # 剩余数量
+    expire_date = Column(TIMESTAMP, nullable=False)  # 过期时间
+    status = Column(String(20), default="active")  # active: 生效, inactive: 未生效, expired: 已过期
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    
+    # 关系
+    user_coupons = relationship("UserCoupon", back_populates="coupon")
+
+
+class UserCoupon(Base):
+    """用户优惠券模型"""
+    __tablename__ = "user_coupons"
+    
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    coupon_id = Column(String(36), ForeignKey("coupons.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(20), default="unused")  # unused: 未使用, used: 已使用, expired: 已过期
+    order_id = Column(String(36), ForeignKey("orders.id"), nullable=True)
+    used_at = Column(TIMESTAMP, nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    
+    # 关系
+    user = relationship("User", back_populates="user_coupons")
+    coupon = relationship("Coupon", back_populates="user_coupons")
+    order = relationship("Order")
+
+
+class Address(Base):
+    """收货地址模型"""
+    __tablename__ = "addresses"
+    
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact = Column(String(50), nullable=False)  # 联系人姓名
+    phone = Column(String(20), nullable=False)  # 联系电话
+    province = Column(String(50), nullable=False)  # 省份
+    city = Column(String(50), nullable=False)  # 城市
+    district = Column(String(50), nullable=False)  # 区县
+    detail = Column(String(200), nullable=False)  # 详细地址
+    is_default = Column(Boolean, default=False)  # 是否默认地址
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    updated_at = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+    
+    # 关系
+    user = relationship("User", back_populates="addresses")
 
 
 class Review(Base):
@@ -524,3 +614,35 @@ class UserBrowseHistory(Base):
     )
 
 
+class RefundRequest(Base):
+    """售后退款申请模型"""
+    __tablename__ = "refund_requests"
+
+    id = Column(String(36), primary_key=True)
+    refund_no = Column(String(50), unique=True, nullable=False, index=True)
+    order_id = Column(String(36), ForeignKey("orders.id"), nullable=False, index=True)
+    order_item_id = Column(String(36), ForeignKey("order_items.id"), nullable=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+
+    refund_type = Column(Enum(RefundType), nullable=False)
+    reason = Column(Enum(RefundReason), nullable=False)
+    description = Column(Text, nullable=True)
+    evidence_images = Column(JSON, nullable=True)
+
+    refund_amount = Column(Integer, nullable=False)  # 存储为分
+    status = Column(Enum(RefundStatus), default=RefundStatus.PENDING, index=True)
+
+    review_note = Column(Text, nullable=True)
+    reviewed_at = Column(TIMESTAMP, nullable=True)
+
+    return_tracking_no = Column(String(100), nullable=True)
+    return_carrier = Column(String(50), nullable=True)
+
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp(), index=True)
+    updated_at = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+    completed_at = Column(TIMESTAMP, nullable=True)
+
+    # 关系
+    order = relationship("Order", backref="refund_requests")
+    order_item = relationship("OrderItem")
+    user = relationship("User")

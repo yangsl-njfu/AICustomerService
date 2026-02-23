@@ -3,20 +3,23 @@
     <el-container>
       <el-header>
         <div class="header-content">
-          <h2>AI客服系统</h2>
+          <div class="logo">
+            <span class="logo-icon">🛒</span>
+            <h2>电商平台</h2>
+          </div>
           <div class="user-info">
-            <span>{{ authStore.user?.username }}</span>
-            <el-button @click="handleLogout" size="small">退出</el-button>
+            <span class="username">{{ authStore.user?.username }}</span>
+            <el-button type="info" plain size="small" @click="handleLogout">退出</el-button>
           </div>
         </div>
       </el-header>
       
       <el-container>
-        <el-aside width="200px">
+        <el-aside width="220px">
           <el-menu :default-active="activeMenu" router>
             <el-menu-item index="/products">
               <el-icon><ShoppingBag /></el-icon>
-              <span>商城</span>
+              <span>商品列表</span>
             </el-menu-item>
             <el-menu-item index="/cart">
               <el-icon><ShoppingCart /></el-icon>
@@ -26,17 +29,21 @@
               <el-icon><Document /></el-icon>
               <span>我的订单</span>
             </el-menu-item>
+            <el-menu-item index="/refunds">
+              <el-icon><Money /></el-icon>
+              <span>我的售后</span>
+            </el-menu-item>
             <el-menu-item index="/favorites">
               <el-icon><Star /></el-icon>
               <span>我的收藏</span>
             </el-menu-item>
             <el-menu-item index="/chat">
               <el-icon><ChatDotRound /></el-icon>
-              <span>AI助手</span>
+              <span>客服助手</span>
             </el-menu-item>
             <el-menu-item index="/tickets">
               <el-icon><Tickets /></el-icon>
-              <span>工单</span>
+              <span>我的工单</span>
             </el-menu-item>
             <el-menu-item index="/knowledge">
               <el-icon><Collection /></el-icon>
@@ -61,14 +68,13 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ChatDotRound, Tickets, Setting, Collection, ShoppingBag, ShoppingCart, Document, Star } from '@element-plus/icons-vue'
+import { ChatDotRound, Tickets, Setting, Collection, ShoppingBag, ShoppingCart, Document, Star, Money } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const activeMenu = ref(route.path)
 
-// 监听路由变化，更新激活菜单
 watch(() => route.path, (newPath) => {
   activeMenu.value = newPath
 })
@@ -97,12 +103,11 @@ const handleLogout = () => {
 }
 
 .el-header {
-  background: var(--surface);
+  background: #ffffff;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   padding: 0 32px;
-  box-shadow: var(--shadow-sm);
 }
 
 .header-content {
@@ -112,93 +117,65 @@ const handleLogout = () => {
   align-items: center;
 }
 
-.header-content h2 {
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  font-size: 24px;
+}
+
+.logo h2 {
   margin: 0;
-  color: var(--text);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  background: var(--gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text);
 }
 
 .user-info {
   display: flex;
   align-items: center;
   gap: 16px;
-  color: var(--text);
 }
 
-.user-info span {
-  background: var(--primary-lighter);
-  color: var(--primary);
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.user-info :deep(.el-button) {
-  background: var(--surface);
-  border: 1px solid var(--border);
+.username {
   color: var(--text-secondary);
-  font-weight: 500;
-  border-radius: 20px;
-  padding: 0 20px;
-  transition: all 0.3s ease;
-}
-
-.user-info :deep(.el-button:hover) {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
-  transform: translateY(-1px);
-  box-shadow: var(--shadow);
+  font-size: 14px;
 }
 
 .el-aside {
-  background: var(--surface);
+  background: #ffffff;
   border-right: 1px solid var(--border);
-  padding: 16px 8px;
-  overflow: hidden;
 }
 
 .el-aside :deep(.el-menu) {
   border-right: none;
   background: transparent;
-  height: 100%;
-  overflow-y: auto;
 }
 
 .el-aside :deep(.el-menu-item) {
-  margin: 4px 0;
-  border-radius: 8px;
-  height: 48px;
-  line-height: 48px;
-  font-weight: 500;
+  margin: 4px 12px;
+  border-radius: var(--radius);
+  height: 44px;
+  line-height: 44px;
   color: var(--text-secondary);
-  transition: all 0.3s ease;
 }
 
 .el-aside :deep(.el-menu-item .el-icon) {
   color: var(--text-muted);
-  font-size: 18px;
 }
 
 .el-aside :deep(.el-menu-item:hover) {
   background: var(--surface-hover);
-  color: var(--primary);
-}
-
-.el-aside :deep(.el-menu-item:hover .el-icon) {
-  color: var(--primary);
+  color: var(--text);
 }
 
 .el-aside :deep(.el-menu-item.is-active) {
   background: var(--primary-lighter);
   color: var(--primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .el-aside :deep(.el-menu-item.is-active .el-icon) {
@@ -208,7 +185,7 @@ const handleLogout = () => {
 .el-main {
   padding: 0;
   background: var(--bg);
-  overflow: hidden;
+  overflow-y: auto;
   height: calc(100vh - 60px);
 }
 </style>

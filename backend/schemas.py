@@ -104,6 +104,10 @@ class AttachmentCreate(BaseModel):
     file_type: str
     file_size: int
     file_path: Optional[str] = None
+    extracted_text: Optional[str] = None  # 视觉LLM提取的文字
+    ocr_used: bool = False  # 是否使用了OCR
+    image_intent: Optional[str] = None  # 图片意图（商品咨询/订单查询/售后服务/工单/文档分析/其他）
+    image_description: Optional[str] = None  # 图片描述
 
 
 class QuickAction(BaseModel):
@@ -120,6 +124,8 @@ class MessageCreate(BaseModel):
     session_id: str
     message: str
     attachments: Optional[List[Dict[str, Any]]] = None
+    purchase_flow: Optional[Dict[str, Any]] = None
+    aftersales_flow: Optional[Dict[str, Any]] = None
 
 
 class AttachmentResponse(BaseModel):
@@ -212,8 +218,9 @@ class FileUploadResponse(BaseModel):
     file_size: int
     file_type: str
     file_path: str
-    file_path: str
     upload_url: str
+    extracted_text: Optional[str] = None  # OCR 提取的文字内容
+    ocr_used: bool = False                # 是否使用了 OCR
 
 
 # 知识库相关模式

@@ -100,7 +100,7 @@ const goLogin = () => {
   align-items: center;
   width: 100vw;
   height: 100vh;
-  background: radial-gradient(circle at top, rgba(56, 189, 248, 0.18), transparent 45%), var(--bg);
+  background: var(--bg);
 }
 
 .register-card {

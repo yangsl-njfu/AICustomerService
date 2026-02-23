@@ -23,6 +23,8 @@ export const useChatStore = defineStore('chat', () => {
   const currentSession = ref<Session | null>(null)
   const messages = ref<Message[]>([])
   const loading = ref(false)
+  const purchaseFlowData = ref<any>(null)
+  const aftersalesFlowData = ref<any>(null)
 
   const buildSessionTitle = (seed?: string, attachments?: any[]) => {
     const trimmed = seed?.replace(/\s+/g, ' ').trim()
@@ -266,7 +268,9 @@ export const useChatStore = defineStore('chat', () => {
         body: JSON.stringify({
           session_id: sessionId,
           message: content,
-          attachments
+          attachments,
+          purchase_flow: purchaseFlowData.value,
+          aftersales_flow: aftersalesFlowData.value
         })
       })
 
@@ -333,19 +337,23 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
 
-      // 更新会话列表
-      await fetchSessions()
-      // 更新当前会话标题
-      if (currentSession.value) {
-        const updatedSession = sessions.value.find(s => s.id === currentSession.value?.id)
-        if (updatedSession) {
-          currentSession.value = { ...currentSession.value, ...updatedSession }
+      // 使用 setTimeout 延迟更新会话列表，避免阻塞 UI
+      setTimeout(async () => {
+        await fetchSessions()
+        // 更新当前会话标题
+        if (currentSession.value) {
+          const updatedSession = sessions.value.find(s => s.id === currentSession.value?.id)
+          if (updatedSession) {
+            currentSession.value = { ...currentSession.value, ...updatedSession }
+          }
         }
-      }
+      }, 100)
     } catch (error) {
       console.error('流式发送消息失败:', error)
     } finally {
       loading.value = false
+      purchaseFlowData.value = null
+      aftersalesFlowData.value = null
     }
   }
 
@@ -404,11 +412,33 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function setPurchaseFlowData(data: any) {
+    purchaseFlowData.value = data
+  }
+
+  function getPurchaseFlowData() {
+    return purchaseFlowData.value
+  }
+
+  function clearPurchaseFlowData() {
+    purchaseFlowData.value = null
+  }
+
+  function setAftersalesFlowData(data: any) {
+    aftersalesFlowData.value = data
+  }
+
+  function clearAftersalesFlowData() {
+    aftersalesFlowData.value = null
+  }
+
   return {
     sessions,
     currentSession,
     messages,
     loading,
+    purchaseFlowData,
+    aftersalesFlowData,
     fetchSessions,
     createSession,
     deleteSession,
@@ -416,6 +446,11 @@ export const useChatStore = defineStore('chat', () => {
     fetchMessages,
     sendMessage,
     sendMessageStream,
-    loadSmartQuestions
+    loadSmartQuestions,
+    setPurchaseFlowData,
+    getPurchaseFlowData,
+    clearPurchaseFlowData,
+    setAftersalesFlowData,
+    clearAftersalesFlowData
   }
 })

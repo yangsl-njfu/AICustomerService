@@ -41,3 +41,9 @@ class ConversationState(TypedDict):
     # 元数据
     timestamp: str
     processing_time: Optional[float]
+    
+    # 购买流程状态
+    purchase_flow: Optional[Dict[str, Any]]
+
+    # 售后流程状态
+    aftersales_flow: Optional[Dict[str, Any]]

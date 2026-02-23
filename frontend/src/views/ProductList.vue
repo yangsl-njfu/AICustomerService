@@ -4,7 +4,7 @@
     <div class="hero-section">
       <div class="hero-content">
         <h1 class="hero-title">
-          <span class="gradient-text">毕业设计作品</span>
+          毕业设计作品
         </h1>
         <p class="hero-subtitle">精选优质项目 · 助力学业成功 · 专业技术支持</p>
         
@@ -223,11 +223,10 @@ function prevPage() {
 
 /* Hero Section */
 .hero-section {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
-  padding: 48px 40px;
+  background: var(--primary);
+  border-radius: var(--radius-lg);
+  padding: 32px 40px;
   margin-bottom: 24px;
-  box-shadow: var(--shadow-lg);
 }
 
 .hero-content {
@@ -237,21 +236,15 @@ function prevPage() {
 }
 
 .hero-title {
-  font-size: 42px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  letter-spacing: -0.02em;
-}
-
-.gradient-text {
-  color: white;
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 8px;
 }
 
 .hero-subtitle {
-  font-size: 16px;
+  font-size: 14px;
   color: rgba(255, 255, 255, 0.9);
-  margin-bottom: 28px;
-  font-weight: 400;
+  margin-bottom: 20px;
 }
 
 .hero-search {
@@ -263,10 +256,10 @@ function prevPage() {
 
 .hero-search input {
   flex: 1;
-  padding: 14px 20px;
+  padding: 12px 16px;
   background: white;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--text);
   font-size: 15px;
   transition: all 0.3s ease;
@@ -275,7 +268,6 @@ function prevPage() {
 
 .hero-search input:focus {
   outline: none;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
 }
 
 .hero-search input::placeholder {
@@ -286,48 +278,42 @@ function prevPage() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 28px;
+  padding: 12px 20px;
   background: white;
   border: none;
-  border-radius: 12px;
-  color: #667eea;
-  font-size: 15px;
-  font-weight: 600;
+  border-radius: var(--radius);
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .search-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  background: var(--primary-lighter);
 }
 
 /* Category Chips */
 .category-chips {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
 .chip {
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: var(--surface);
-  border: 2px solid var(--border);
-  border-radius: 24px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
   color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .chip:hover {
   border-color: var(--primary);
   color: var(--primary);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
 }
 
 .chip.active {

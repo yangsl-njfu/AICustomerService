@@ -15,6 +15,7 @@ from .reviews import router as reviews_router
 from .favorites import router as favorites_router
 from .browse import router as browse_router
 from .gateway import router as gateway_router
+from .refunds import router as refunds_router
 
 # 创建主路由器
 api_router = APIRouter(prefix="/api")
@@ -34,6 +35,7 @@ api_router.include_router(orders_router, tags=["订单"])
 api_router.include_router(reviews_router, tags=["评价"])
 api_router.include_router(favorites_router, tags=["收藏"])
 api_router.include_router(browse_router, tags=["浏览历史"])
+api_router.include_router(refunds_router, tags=["售后"])
 
 # API网关（多业务接入）
 api_router.include_router(gateway_router, tags=["网关"])

@@ -172,24 +172,59 @@ async def send_message(
             attachments=message_data.attachments
         )
 
-    # 构建附件信息（包含 file_path）
-    attachment_info = [
-        {
+    # 构建附件信息（包含 file_path、extracted_text 和 image_intent）
+    attachment_info = []
+    image_intents = []  # 收集所有图片意图
+    for i, att in enumerate(saved_attachments):
+        att_data = {
             "file_id": att.id,
             "file_name": att.file_name,
             "file_type": att.file_type,
             "file_size": att.file_size,
             "file_path": att.file_path
         }
-        for att in saved_attachments
-    ]
+        # 从原始请求中获取 extracted_text、ocr_used、image_intent
+        if message_data.attachments and i < len(message_data.attachments):
+            original_att = message_data.attachments[i]
+            
+            # extracted_text
+            if hasattr(original_att, 'extracted_text'):
+                att_data["extracted_text"] = original_att.extracted_text
+            elif isinstance(original_att, dict):
+                att_data["extracted_text"] = original_att.get('extracted_text')
+            
+            # ocr_used
+            if hasattr(original_att, 'ocr_used'):
+                att_data["ocr_used"] = original_att.ocr_used
+            elif isinstance(original_att, dict):
+                att_data["ocr_used"] = original_att.get('ocr_used', False)
+            
+            # image_intent（图片意图）
+            image_intent = None
+            if hasattr(original_att, 'image_intent'):
+                image_intent = original_att.image_intent
+            elif isinstance(original_att, dict):
+                image_intent = original_att.get('image_intent')
+            
+            if image_intent:
+                att_data["image_intent"] = image_intent
+                image_intents.append(image_intent)
+            
+            # image_description（图片描述）
+            if hasattr(original_att, 'image_description'):
+                att_data["image_description"] = original_att.image_description
+            elif isinstance(original_att, dict):
+                att_data["image_description"] = original_att.get('image_description')
+        
+        attachment_info.append(att_data)
 
     # 处理消息
     result = await ai_workflow.process_message(
         user_id=user_id,
         session_id=message_data.session_id,
         message=message_data.message,
-        attachments=attachment_info
+        attachments=attachment_info,
+        purchase_flow=message_data.purchase_flow
     )
 
     # 保存AI回复
@@ -315,12 +350,20 @@ async def stream_message(
                     file_type = getattr(att, "file_type", None)
                     file_size = getattr(att, "file_size", None)
                     file_path = getattr(att, "file_path", None)
+                if isinstance(att, dict):
+                    extracted_text = att.get("extracted_text")
+                    ocr_used = att.get("ocr_used", False)
+                else:
+                    extracted_text = getattr(att, "extracted_text", None)
+                    ocr_used = getattr(att, "ocr_used", False)
                 attachment_info.append({
                     "file_id": file_id,
                     "file_name": file_name,
                     "file_type": file_type,
                     "file_size": file_size,
-                    "file_path": file_path
+                    "file_path": file_path,
+                    "extracted_text": extracted_text,
+                    "ocr_used": ocr_used
                 })
 
         # 阶段1: 意图识别
@@ -330,6 +373,13 @@ async def stream_message(
             message=message_data.message,
             attachments=attachment_info
         )
+        
+        purchase_flow = message_data.purchase_flow
+        if purchase_flow:
+            state["purchase_flow"] = purchase_flow
+        aftersales_flow = message_data.aftersales_flow
+        if aftersales_flow:
+            state["aftersales_flow"] = aftersales_flow
         intent = state.get("intent", "问答")
         await send_event({"type": "intent", "intent": intent})
 

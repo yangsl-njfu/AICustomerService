@@ -11,7 +11,11 @@ class Router:
         """Function Calling后的路由决策"""
         intent = state.get("intent")
         tool_used = state.get("tool_used")
-        
+
+        # 售后服务 - 触发售后流程
+        if intent == "售后服务":
+            return "aftersales_flow"
+
         # 个性化推荐（基于浏览历史）
         if intent == "个性化推荐":
             return "personalized_recommend"
@@ -46,6 +50,7 @@ class Router:
             "商品咨询": "product_inquiry",
             "购买指导": "purchase_guide",
             "订单查询": "order_query",
-            "个性化推荐": "personalized_recommend"
+            "个性化推荐": "personalized_recommend",
+            "售后服务": "aftersales_flow"
         }
         return intent_map.get(state.get("intent"), "clarify")

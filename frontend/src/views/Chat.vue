@@ -72,10 +72,22 @@
                   v-for="(attachment, index) in message.attachments"
                   :key="index"
                   class="attachment-item"
+                  :class="{ 'is-image': isImageFile(attachment.file_type) }"
                 >
-                  <el-icon><Document /></el-icon>
-                  <span class="attachment-name">{{ attachment.file_name }}</span>
-                  <span class="attachment-size">({{ formatFileSize(attachment.file_size) }})</span>
+                  <!-- 图片预览 -->
+                  <template v-if="isImageFile(attachment.file_type)">
+                    <img 
+                      :src="getImageUrl(attachment.file_id)" 
+                      class="attachment-image-preview"
+                      @click="previewImage(getImageUrl(attachment.file_id))"
+                    />
+                  </template>
+                  <!-- 普通文件 -->
+                  <template v-else>
+                    <el-icon><Document /></el-icon>
+                    <span class="attachment-name">{{ attachment.file_name }}</span>
+                    <span class="attachment-size">({{ formatFileSize(attachment.file_size) }})</span>
+                  </template>
                 </div>
               </div>
               <div class="message-time">{{ formatTime(message.created_at) }}</div>
@@ -179,6 +191,42 @@
                     <el-icon class="action-arrow"><ArrowRight /></el-icon>
                   </template>
                   
+                  <!-- 地址卡片样式 -->
+                  <template v-else-if="action.type === 'address'">
+                    <div class="address-card-content">
+                      <div class="address-card-contact">{{ action.data.contact }} {{ action.data.phone }}</div>
+                      <div class="address-card-detail">{{ action.data.address }}</div>
+                    </div>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
+
+                  <!-- 优惠券卡片样式 -->
+                  <template v-else-if="action.type === 'coupon'">
+                    <div class="coupon-card-content">
+                      <div class="coupon-card-name">{{ action.data.name }}</div>
+                      <div class="coupon-card-info">满¥{{ action.data.min_amount }} 减¥{{ action.data.discount }} | 有效期至 {{ action.data.expire_date }}</div>
+                    </div>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
+
+                  <!-- 售后卡片样式 -->
+                  <template v-else-if="action.type === 'refund_card'">
+                    <div class="refund-card-content">
+                      <div class="refund-card-header">
+                        <span class="refund-no">售后单号：{{ action.data.refund_no }}</span>
+                        <span class="refund-status" :class="'status-' + action.data.status">{{ action.data.status_text }}</span>
+                      </div>
+                      <div class="refund-card-body">
+                        <span class="refund-type">{{ action.data.refund_type_text }}</span>
+                        <span class="refund-product">{{ action.data.product_name }}</span>
+                      </div>
+                      <div class="refund-card-footer" v-if="action.data.refund_amount">
+                        <span class="refund-amount">退款：¥{{ action.data.refund_amount.toFixed(2) }}</span>
+                      </div>
+                    </div>
+                    <el-icon class="action-arrow"><ArrowRight /></el-icon>
+                  </template>
+
                   <!-- 普通按钮样式 -->
                   <template v-else>
                     <span v-if="action.icon" class="action-icon">{{ action.icon }}</span>
@@ -204,16 +252,28 @@
           </el-button>
         </div>
         <div class="file-list">
-          <el-tag
+          <div
             v-for="(file, index) in selectedFiles"
             :key="index"
-            closable
-            @close="removeFile(index)"
-            class="file-tag"
+            class="file-item"
           >
-            <el-icon><Document /></el-icon>
-            {{ file.name }}
-          </el-tag>
+            <!-- 图片预览 -->
+            <div v-if="isImageFile(file)" class="image-preview-item">
+              <img :src="getFilePreviewUrl(file)" class="preview-image" />
+              <span class="file-name">{{ getDisplayFileName(file) }}</span>
+              <el-icon class="remove-icon" @click="removeFile(index)"><CircleClose /></el-icon>
+            </div>
+            <!-- 普通文件 -->
+            <el-tag
+              v-else
+              closable
+              @close="removeFile(index)"
+              class="file-tag"
+            >
+              <el-icon><Document /></el-icon>
+              {{ file.name }}
+            </el-tag>
+          </div>
         </div>
       </div>
 
@@ -257,8 +317,9 @@
           type="textarea"
           :rows="1"
           :autosize="{ minRows: 1, maxRows: 4 }"
-          placeholder="输入消息... 或直接拖拽文件到此处"
+          placeholder="输入消息... 或直接拖拽/粘贴文件到此处"
           @keydown.enter.exact.prevent="handleEnterKey"
+          @paste="handlePaste"
         />
         <el-button
           type="primary"
@@ -273,6 +334,71 @@
 
     <!-- 订单选择弹窗 -->
     <OrderSelector v-model="orderSelectorVisible" @select="handleOrderSelect" />
+    
+    <!-- 支付密码弹窗 -->
+    <el-dialog
+      v-model="paymentDialogVisible"
+      :title="paymentDialogTitle"
+      width="400px"
+      :close-on-click-modal="false"
+      :show-close="!paymentProcessing"
+      class="payment-dialog"
+    >
+      <div class="payment-info">
+        <div class="payment-order-no">订单号：{{ paymentData.order_no }}</div>
+        <div class="payment-amount">
+          <span class="amount-label">支付金额</span>
+          <span class="amount-value">¥{{ paymentData.amount?.toFixed(2) }}</span>
+        </div>
+      </div>
+      
+      <div class="password-input-section">
+        <div class="password-label">请输入6位数字支付密码</div>
+        <div class="password-dots">
+          <div 
+            v-for="i in 6" 
+            :key="i" 
+            class="password-dot"
+            :class="{ filled: paymentPassword.length >= i }"
+          >
+            <span v-if="paymentPassword.length >= i">●</span>
+          </div>
+        </div>
+        <input
+          ref="passwordInputRef"
+          v-model="paymentPassword"
+          type="number"
+          maxlength="6"
+          class="password-input"
+          @input="handlePasswordInput"
+          @keydown="handlePasswordKeydown"
+        />
+      </div>
+      
+      <div class="numpad">
+        <div 
+          v-for="num in [1,2,3,4,5,6,7,8,9]" 
+          :key="num"
+          class="numpad-key"
+          @click="appendPassword(num)"
+        >{{ num }}</div>
+        <div class="numpad-key disabled"></div>
+        <div class="numpad-key" @click="appendPassword(0)">0</div>
+        <div class="numpad-key" @click="deletePassword">⌫</div>
+      </div>
+      
+      <template #footer>
+        <el-button @click="closePaymentDialog" :disabled="paymentProcessing">取消</el-button>
+        <el-button 
+          type="primary" 
+          @click="confirmPayment" 
+          :loading="paymentProcessing"
+          :disabled="paymentPassword.length !== 6"
+        >
+          确认支付
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -280,6 +406,8 @@
 import { ref, onMounted, nextTick, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
+import { useCartStore } from '@/stores/cart'
+import { useAuthStore } from '@/stores/auth'
 import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag, Close } from '@element-plus/icons-vue'
 import { apiClient } from '@/api/client'
 import { ElMessage } from 'element-plus'
@@ -288,6 +416,8 @@ import OrderSelector from '@/components/OrderSelector.vue'
 
 const router = useRouter()
 const chatStore = useChatStore()
+const cartStore = useCartStore()
+const authStore = useAuthStore()
 const messageList = computed(() => chatStore.messages)
 const inputMessage = ref('')
 const thinkingStatus = ref('正在分析文档内容...')
@@ -298,11 +428,106 @@ const isDragOver = ref(false)
 const expandedThinking = ref<Record<string, boolean>>({})
 const orderSelectorVisible = ref(false)
 
-onMounted(async () => {
-  await chatStore.fetchSessions()
-  if (chatStore.sessions.length > 0) {
-    await chatStore.selectSession(chatStore.sessions[0].id)
+// 图片压缩配置
+const IMAGE_COMPRESSION_CONFIG = {
+  maxWidth: 1920,      // 最大宽度
+  maxHeight: 1920,     // 最大高度
+  quality: 0.85,       // 压缩质量 (0-1)
+  maxSizeMB: 2         // 超过此大小才压缩 (MB)
+}
+
+/**
+ * 压缩图片
+ * @param file 原始图片文件
+ * @returns 压缩后的图片文件（如果不需要压缩则返回原文件）
+ */
+const compressImage = async (file: File): Promise<File> => {
+  // 如果不是图片或文件已经很小，直接返回
+  if (!file.type.startsWith('image/') || file.size <= IMAGE_COMPRESSION_CONFIG.maxSizeMB * 1024 * 1024) {
+    return file
   }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      
+      let { width, height } = img
+      const { maxWidth, maxHeight, quality } = IMAGE_COMPRESSION_CONFIG
+      
+      // 计算缩放比例
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height)
+        width = Math.floor(width * ratio)
+        height = Math.floor(height * ratio)
+      }
+      
+      // 创建 canvas
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      
+      if (!ctx) {
+        resolve(file) // 压缩失败，返回原文件
+        return
+      }
+      
+      // 绘制图片
+      ctx.drawImage(img, 0, 0, width, height)
+      
+      // 转换为 blob
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            // 创建新的 File 对象
+            const compressedFile = new File([blob], file.name, {
+              type: file.type,
+              lastModified: file.lastModified
+            })
+            console.log(`[图片压缩] ${file.name}: ${(file.size / 1024 / 1024).toFixed(2)}MB -> ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`)
+            resolve(compressedFile)
+          } else {
+            resolve(file) // 压缩失败，返回原文件
+          }
+        },
+        file.type,
+        quality
+      )
+    }
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(file) // 加载失败，返回原文件
+    }
+    
+    img.src = url
+  })
+}
+
+// 支付密码弹窗相关
+const paymentDialogVisible = ref(false)
+const paymentDialogTitle = ref('支付')
+const paymentPassword = ref('')
+const paymentProcessing = ref(false)
+const passwordInputRef = ref<HTMLInputElement>()
+const paymentData = ref<{
+  order_id?: string
+  order_no?: string
+  payment_method?: string
+  amount?: number
+}>({})
+
+onMounted(() => {
+  // 使用 setTimeout 避免阻塞页面渲染
+  setTimeout(async () => {
+    await chatStore.fetchSessions()
+    if (chatStore.sessions.length > 0) {
+      await chatStore.selectSession(chatStore.sessions[0].id)
+    }
+  }, 0)
 })
 
 watch(() => messageList.value.length, () => {
@@ -330,8 +555,13 @@ const deleteSession = async (sessionId: string) => {
 }
 
 // 处理文件选择
-const handleFileChange = (file: any) => {
-  const rawFile = file.raw
+const handleFileChange = async (file: any) => {
+  let rawFile = file.raw
+
+  // 对图片进行压缩
+  if (rawFile.type.startsWith('image/')) {
+    rawFile = await compressImage(rawFile)
+  }
 
   // 检查文件大小 (10MB)
   if (rawFile.size > 10 * 1024 * 1024) {
@@ -365,6 +595,38 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+// 判断是否为图片文件（支持 File 对象或字符串类型）
+const isImageFile = (fileOrType: File | string): boolean => {
+  if (typeof fileOrType === 'string') {
+    return ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'].includes(fileOrType.toLowerCase())
+  }
+  return fileOrType.type?.startsWith('image/') || false
+}
+
+// 预览图片
+const previewImage = (url: string) => {
+  window.open(url, '_blank')
+}
+
+// 获取图片URL（带认证token）
+const getImageUrl = (fileId: string): string => {
+  const token = authStore.token
+  return `/api/files/${fileId}?token=${token}`
+}
+
+// 获取文件预览URL
+const getFilePreviewUrl = (file: File): string => {
+  return URL.createObjectURL(file)
+}
+
+// 获取显示的文件名（对粘贴的图片显示更友好的名称）
+const getDisplayFileName = (file: File): string => {
+  if (file.name.startsWith('pasted-image-')) {
+    return '粘贴的图片'
+  }
+  return file.name
+}
+
 // 拖拽处理
 const handleDragEnter = () => {
   isDragOver.value = true
@@ -374,13 +636,66 @@ const handleDragLeave = () => {
   isDragOver.value = false
 }
 
-const handleDrop = (event: DragEvent) => {
+// 处理粘贴事件
+const handlePaste = async (event: ClipboardEvent) => {
+  const items = event.clipboardData?.items
+  if (!items) return
+
+  let hasImage = false
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+
+    // 检查是否是图片类型
+    if (item.type.indexOf('image') !== -1) {
+      hasImage = true
+      event.preventDefault() // 阻止默认粘贴行为
+
+      const blob = item.getAsFile()
+      if (blob) {
+        // 创建 File 对象
+        let file = new File([blob], `pasted-image-${Date.now()}.png`, {
+          type: blob.type || 'image/png'
+        })
+
+        // 压缩图片
+        file = await compressImage(file)
+
+        // 检查文件大小 (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          ElMessage.warning('粘贴的图片超过10MB限制')
+          continue
+        }
+
+        // 检查是否已存在
+        const exists = selectedFiles.value.some(f => f.name === file.name && f.size === file.size)
+        if (!exists) {
+          selectedFiles.value.push(file)
+          ElMessage.success('图片已粘贴到输入框')
+        }
+      }
+      break
+    }
+  }
+
+  // 如果不是图片，允许默认粘贴行为（粘贴文本）
+  if (!hasImage) {
+    return
+  }
+}
+
+const handleDrop = async (event: DragEvent) => {
   isDragOver.value = false
 
   const files = event.dataTransfer?.files
   if (files) {
     for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+      let file = files[i]
+
+      // 对图片进行压缩
+      if (file.type.startsWith('image/')) {
+        file = await compressImage(file)
+      }
 
       // 检查文件大小 (10MB)
       if (file.size > 10 * 1024 * 1024) {
@@ -407,6 +722,9 @@ const sendMessage = async () => {
     return
   }
 
+  // 使用 nextTick 确保 UI 先响应点击事件
+  await nextTick()
+  
   uploading.value = true
 
   // 设置思考状态
@@ -444,7 +762,9 @@ const sendMessage = async () => {
         file_name: response.file_name,
         file_type: response.file_type,
         file_size: response.file_size,
-        file_path: response.file_path
+        file_path: response.file_path,
+        extracted_text: response.extracted_text || null,  // 视觉LLM提取的文字
+        ocr_used: response.ocr_used || false
       }))
     }
 
@@ -507,6 +827,101 @@ const formatOrderTime = (time: string) => {
 // 显示订单选择器
 const showOrderSelector = () => {
   orderSelectorVisible.value = true
+}
+
+// 显示支付密码弹窗
+const showPaymentDialog = (data: any) => {
+  paymentData.value = data
+  paymentDialogTitle.value = data.payment_method === 'wechat' ? '微信支付' : '支付宝'
+  paymentPassword.value = ''
+  paymentDialogVisible.value = true
+  paymentProcessing.value = false
+  // 自动聚焦密码输入框
+  nextTick(() => {
+    passwordInputRef.value?.focus()
+  })
+}
+
+// 关闭支付密码弹窗
+const closePaymentDialog = () => {
+  if (paymentProcessing.value) return
+  paymentDialogVisible.value = false
+  paymentPassword.value = ''
+}
+
+// 追加密码数字
+const appendPassword = (num: number) => {
+  if (paymentPassword.value.length < 6) {
+    paymentPassword.value += num.toString()
+    // 输入6位后自动提交
+    if (paymentPassword.value.length === 6) {
+      setTimeout(() => confirmPayment(), 300)
+    }
+  }
+}
+
+// 删除密码最后一位
+const deletePassword = () => {
+  paymentPassword.value = paymentPassword.value.slice(0, -1)
+}
+
+// 处理密码输入
+const handlePasswordInput = (e: Event) => {
+  const target = e.target as HTMLInputElement
+  // 只允许数字
+  let value = target.value.replace(/\D/g, '')
+  // 最多6位
+  if (value.length > 6) {
+    value = value.slice(0, 6)
+  }
+  paymentPassword.value = value
+}
+
+// 处理密码键盘事件
+const handlePasswordKeydown = (e: KeyboardEvent) => {
+  // 阻止非数字键（除了退格、删除、方向键等）
+  if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+    e.preventDefault()
+  }
+}
+
+// 确认支付
+const confirmPayment = async () => {
+  if (paymentPassword.value.length !== 6) {
+    ElMessage.warning('请输入6位支付密码')
+    return
+  }
+  
+  paymentProcessing.value = true
+  
+  try {
+    // 模拟支付处理
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    
+    // 支付成功
+    ElMessage.success('支付成功！')
+    paymentDialogVisible.value = false
+    paymentPassword.value = ''
+    
+    // 发送支付完成消息到后端
+    const flowData = {
+      action: 'purchase_flow',
+      step: 'payment_success',
+      order_id: paymentData.value.order_id,
+      order_no: paymentData.value.order_no,
+      payment_method: paymentData.value.payment_method,
+      payment_password: '******' // 实际项目中不应该发送真实密码
+    }
+    inputMessage.value = `[购买流程] 支付完成`
+    chatStore.setPurchaseFlowData(flowData)
+    // 使用 setTimeout 避免阻塞 UI
+    setTimeout(() => sendMessage(), 0)
+  } catch (error) {
+    console.error('支付失败:', error)
+    ElMessage.error('支付失败，请重试')
+  } finally {
+    paymentProcessing.value = false
+  }
 }
 
 // 处理订单选择 - 将订单信息以卡片形式插入到消息中
@@ -636,7 +1051,8 @@ const getOrderStatusText = (status: string) => {
     shipped: '已发货',
     delivered: '已送达',
     completed: '已完成',
-    cancelled: '已取消'
+    cancelled: '已取消',
+    refunded: '已退款'
   }
   return statusMap[status] || '未知'
 }
@@ -649,7 +1065,7 @@ const getOrderProductName = (order: any) => {
 }
 
 // 处理快速操作按钮点击
-const handleQuickAction = (action: any) => {
+const handleQuickAction = async (action: any) => {
   console.log('=== 快速操作 ===')
   console.log('action.type:', action.type)
   console.log('action.action:', action.action)
@@ -660,68 +1076,53 @@ const handleQuickAction = (action: any) => {
     if (action.data?.product_id) {
       window.open(`/products/${action.data.product_id}`, '_blank')
     }
-  } else if (action.type === 'order_card_simple') {
-    // 简洁订单卡片 - 直接发送订单信息
-    console.log('点击了简洁订单卡片')
-    const orderCardMessage = {
-      id: Date.now().toString(),
-      role: 'user' as const,
-      content: `【发订单】`,
-      created_at: new Date().toISOString(),
-      metadata: {
-        order_card: {
-          order_no: action.data.order_no,
-          status: action.data.status_text,
-          product_name: action.data.product_name,
-          total_amount: action.data.total_amount.toFixed(2),
-          item_count: 1
-        }
-      }
+  } else if (action.type === 'address') {
+    // 地址卡片 - 选择该地址进入确认步骤
+    const flowData = {
+      action: 'purchase_flow',
+      step: 'confirm_address',
+      product_id: action.data?.product_id,
+      coupon_id: action.data?.coupon_id,
+      address_id: action.data?.address_id,
+      final_price: action.data?.final_price
     }
-    
-    // 添加到消息列表
-    chatStore.messages.push(orderCardMessage)
-    
-    // 自动发送订单咨询
-    inputMessage.value = `我要咨询订单 ${action.data.order_no}`
-    sendMessage()
-  } else if (action.type === 'order_card') {
-    // 完整订单卡片 - 直接发送订单信息
-    console.log('点击了完整订单卡片')
-    const orderCardMessage = {
-      id: Date.now().toString(),
-      role: 'user' as const,
-      content: `【发订单】`,
-      created_at: new Date().toISOString(),
-      metadata: {
-        order_card: {
-          order_no: action.data.order_no,
-          status: action.data.status_text,
-          product_name: action.data.product_name,
-          total_amount: action.data.total_amount.toFixed(2),
-          item_count: action.data.item_count || 1
-        }
-      }
+    inputMessage.value = `[购买流程] 选择地址：${action.data?.contact}`
+    chatStore.setPurchaseFlowData(flowData)
+    setTimeout(() => sendMessage(), 0)
+  } else if (action.type === 'coupon') {
+    // 优惠券卡片 - 选择该优惠券
+    const flowData = {
+      action: 'purchase_flow',
+      step: 'confirm_coupon',
+      product_id: action.data?.product_id || chatStore.purchaseFlowData?.product_id,
+      coupon_id: action.data?.coupon_id
     }
+    inputMessage.value = `[购买流程] 使用优惠券：${action.data?.name}`
+    chatStore.setPurchaseFlowData(flowData)
+    setTimeout(() => sendMessage(), 0)
+  } else if (action.type === 'order_card_simple' || action.type === 'order_card') {
+    // 订单卡片 - 直接发送订单信息（只发送一条消息）
+    console.log('点击了订单卡片:', action.type)
+    const messageContent = `我要咨询订单 ${action.data.order_no}`
     
-    // 添加到消息列表
-    chatStore.messages.push(orderCardMessage)
-    
-    // 自动发送订单咨询
-    inputMessage.value = `我要咨询订单 ${action.data.order_no}`
-    sendMessage()
+    // 直接调用 sendMessageStream，它会自动添加消息到列表
+    setTimeout(async () => {
+      await chatStore.sendMessageStream(messageContent, [], (chunk) => {
+        console.log('收到内容片段:', chunk)
+      })
+    }, 0)
   } else if (action.type === 'button') {
     // 普通按钮 - 根据action类型处理
     console.log('点击了普通按钮, action.action:', action.action)
     if (action.action === 'send_question' && action.data?.question) {
       // 发送预设问题
       inputMessage.value = action.data.question
-      sendMessage()
+      setTimeout(() => sendMessage(), 0)
     } else if (action.action === 'select_order') {
       // 选择订单 - 发送订单信息
       const orderNo = action.data?.order_no || ''
       inputMessage.value = `我要咨询订单 ${orderNo}`
-      sendMessage()
+      setTimeout(() => sendMessage(), 0)
     } else if (action.action === 'open_order_selector') {
       // 打开订单选择弹窗
       console.log('打开订单选择弹窗')
@@ -734,10 +1135,88 @@ const handleQuickAction = (action: any) => {
       }
     } else if (action.action === 'view_all_recommendations') {
       inputMessage.value = '查看全部推荐'
-      sendMessage()
+      setTimeout(() => sendMessage(), 0)
     } else if (action.action === 'refresh_recommendations') {
       inputMessage.value = '换一批推荐'
-      sendMessage()
+      setTimeout(() => sendMessage(), 0)
+    } else if (action.action === 'add_to_cart') {
+      // 加入购物车
+      const productId = action.data?.product_id
+      const productTitle = action.data?.product?.title || '商品'
+      if (productId) {
+        try {
+          await cartStore.addToCart(productId, 1)
+          ElMessage.success(`已将 "${productTitle}" 加入购物车`)
+        } catch (error) {
+          ElMessage.error('加入购物车失败，请重试')
+        }
+      }
+    } else if (action.action === 'purchase_flow') {
+      // 购买流程 - 发送带有 action 的消息
+      const step = action.data?.step
+      
+      // 如果是支付步骤，直接显示支付弹框，不发送消息到后端
+      if (step === 'payment_done' && action.data?.order_id) {
+        const paymentData = {
+          order_id: action.data.order_id,
+          order_no: action.data.order_no,
+          payment_method: action.data.payment_method || 'wechat',
+          amount: action.data.final_price || 0
+        }
+        // 保存当前流程数据供支付成功后使用
+        chatStore.setPurchaseFlowData({
+          action: 'purchase_flow',
+          step: 'payment_done',
+          ...action.data
+        })
+        // 直接显示支付弹框
+        showPaymentDialog(paymentData)
+        return
+      }
+      
+      const flowData = {
+        action: 'purchase_flow',
+        step: step || 'start',
+        product_id: action.data?.product_id,
+        coupon_id: action.data?.coupon_id,
+        address_id: action.data?.address_id,
+        order_id: action.data?.order_id,
+        product: action.data?.product,
+        coupon: action.data?.coupon,
+        address: action.data?.address,
+        final_price: action.data?.final_price,
+        order_no: action.data?.order_no
+      }
+      inputMessage.value = `[购买流程] ${action.label || '确认'}`
+      chatStore.setPurchaseFlowData(flowData)
+      // 使用 setTimeout 避免阻塞 UI
+      setTimeout(() => sendMessage(), 0)
+    } else if (action.action === 'aftersales_flow') {
+      // 售后流程
+      const step = action.data?.step
+      if (step === 'cancel') {
+        // 取消售后
+        inputMessage.value = '取消售后申请'
+        setTimeout(() => sendMessage(), 0)
+        return
+      }
+      const flowData = {
+        action: 'aftersales_flow',
+        step: step || 'select_order',
+        order_id: action.data?.order_id,
+        order_no: action.data?.order_no,
+        status: action.data?.status,
+        product_name: action.data?.product_name,
+        total_amount: action.data?.total_amount,
+        items: action.data?.items,
+        refund_type: action.data?.refund_type,
+        reason: action.data?.reason,
+        description: action.data?.description,
+        refund_amount: action.data?.refund_amount,
+      }
+      inputMessage.value = `[售后流程] ${action.label || '确认'}`
+      chatStore.setAftersalesFlowData(flowData)
+      setTimeout(() => sendMessage(), 0)
     } else if (action.data?.question) {
       // 兼容旧格式
       inputMessage.value = action.data.question
@@ -748,6 +1227,10 @@ const handleQuickAction = (action: any) => {
     if (action.data?.url) {
       window.open(action.data.url, '_blank')
     }
+  } else if (action.type === 'payment_password') {
+    // 支付密码输入 - 显示支付弹窗
+    console.log('显示支付密码弹窗:', action.data)
+    showPaymentDialog(action.data)
   }
 }
 </script>
@@ -763,35 +1246,18 @@ const handleQuickAction = (action: any) => {
 }
 
 .sidebar {
-  width: 300px;
+  width: 280px;
   background: var(--surface);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border);
 }
 
 .sidebar-header {
-  padding: 24px;
-  background: var(--surface-2);
+  padding: 20px;
   border-bottom: 1px solid var(--border);
-}
-
-.sidebar-header :deep(.el-button) {
-  background: rgba(56, 189, 248, 0.2);
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  color: var(--text);
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.sidebar-header :deep(.el-button:hover) {
-  background: rgba(56, 189, 248, 0.32);
-  border-color: rgba(56, 189, 248, 0.6);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.4);
 }
 
 .session-list {
@@ -801,14 +1267,12 @@ const handleQuickAction = (action: any) => {
 }
 
 .session-item {
-  padding: 16px 20px;
+  padding: 14px 16px;
   margin-bottom: 8px;
   cursor: pointer;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-  background: var(--surface-3);
-  border: 1px solid transparent;
-  color: var(--muted);
+  border-radius: var(--radius);
+  transition: all 0.2s ease;
+  background: var(--surface-hover);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -823,7 +1287,6 @@ const handleQuickAction = (action: any) => {
   opacity: 0;
   transition: opacity 0.2s ease;
   flex-shrink: 0;
-  margin-left: 8px;
 }
 
 .session-item:hover .session-delete-btn {
@@ -831,34 +1294,24 @@ const handleQuickAction = (action: any) => {
 }
 
 .session-item:hover {
-  background: rgba(148, 163, 184, 0.12);
-  border-color: var(--border);
-  transform: translateX(4px);
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.35);
+  background: var(--surface-3);
   color: var(--text);
 }
 
 .session-item.active {
-  background: rgba(56, 189, 248, 0.2);
-  color: var(--text);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.4);
-  border-color: rgba(56, 189, 248, 0.4);
-}
-
-.session-item.active .session-info {
-  color: var(--text);
+  background: var(--primary-lighter);
+  color: var(--primary);
 }
 
 .session-title {
-  font-weight: 600;
-  margin-bottom: 6px;
-  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-size: 14px;
 }
 
 .session-info {
   font-size: 12px;
-  color: var(--muted);
-  transition: color 0.3s ease;
+  color: var(--text-muted);
 }
 
 .chat-main {
@@ -866,50 +1319,34 @@ const handleQuickAction = (action: any) => {
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  overflow: hidden;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
+  overflow: hidden;
   min-height: 0;
 }
 
 .chat-header {
-  padding: 24px 32px;
-  background: var(--surface-2);
-  color: var(--text);
+  padding: 16px 24px;
   border-bottom: 1px solid var(--border);
 }
 
 .chat-header h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.5px;
 }
 
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 28px;
-  background: var(--surface-3);
+  padding: 20px;
+  background: var(--bg);
   min-height: 0;
 }
 
 .message-item {
   display: flex;
-  margin-bottom: 24px;
-  animation: fadeInUp 0.35s ease;
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  margin-bottom: 20px;
 }
 
 .message-item.user {
@@ -917,59 +1354,38 @@ const handleQuickAction = (action: any) => {
 }
 
 .message-avatar {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--surface-2);
+  background: var(--surface-hover);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 16px;
-  color: var(--text);
-  font-size: 20px;
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.35);
-  transition: transform 0.3s ease;
-  border: 1px solid var(--border);
-}
-
-.message-avatar:hover {
-  transform: scale(1.1);
+  margin: 0 12px;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .message-item.user .message-avatar {
-  background: rgba(56, 189, 248, 0.25);
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.4);
-  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: var(--primary-lighter);
 }
 
 .message-content {
   max-width: 70%;
-  background: var(--surface-2);
-  padding: 20px 24px;
-  border-radius: 16px;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
+  background: var(--surface);
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  transition: all 0.3s ease;
-}
-
-.message-content:hover {
-  box-shadow: 0 14px 32px rgba(2, 6, 23, 0.45);
 }
 
 .message-item.user .message-content {
-  background: rgba(56, 189, 248, 0.22);
-  color: var(--text);
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
-}
-
-.message-item.user .message-content:hover {
-  box-shadow: 0 14px 32px rgba(2, 6, 23, 0.55);
+  background: var(--primary-lighter);
+  border-color: var(--primary-lighter);
 }
 
 .message-text {
   line-height: 1.6;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .message-item.user .message-text {
@@ -983,9 +1399,9 @@ const handleQuickAction = (action: any) => {
 }
 
 .message-attachments {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-light);
 }
 
 .attachment-item {
@@ -994,26 +1410,47 @@ const handleQuickAction = (action: any) => {
   gap: 8px;
   font-size: 13px;
   color: var(--text);
-  margin-top: 6px;
-  padding: 6px 10px;
-  background: rgba(148, 163, 184, 0.12);
-  border-radius: 8px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--surface-hover);
+  border-radius: var(--radius-sm);
 }
 
 .message-item.user .message-attachments {
-  border-top: 1px dashed rgba(56, 189, 248, 0.45);
+  border-top-color: var(--border-light);
 }
 
 .message-item.user .attachment-item {
-  background: rgba(2, 6, 23, 0.35);
-  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: var(--primary-lighter);
+}
+
+/* 图片附件样式 */
+.attachment-item.is-image {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+}
+
+.attachment-image-preview {
+  width: 200px;
+  max-height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid var(--border);
+}
+
+.attachment-image-preview:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .message-time {
   font-size: 11px;
-  color: var(--muted);
-  margin-top: 8px;
-  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 6px;
 }
 
 .message-item.user .message-time {
@@ -1024,9 +1461,9 @@ const handleQuickAction = (action: any) => {
 .user-order-card {
   margin-top: 12px;
   padding: 12px;
-  background: rgba(2, 6, 23, 0.3);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 10px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .user-order-card .order-card-header {
@@ -1035,22 +1472,21 @@ const handleQuickAction = (action: any) => {
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px dashed rgba(56, 189, 248, 0.3);
+  border-bottom: 1px dashed var(--border-light);
 }
 
 .user-order-card .order-no {
   font-size: 12px;
-  color: var(--text);
+  color: var(--text-muted);
   font-family: monospace;
-  opacity: 0.8;
 }
 
 .user-order-card .order-status {
   font-size: 12px;
   padding: 2px 8px;
-  background: rgba(56, 189, 248, 0.2);
-  border-radius: 8px;
-  color: var(--text);
+  background: var(--primary-lighter);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
 }
 
 .user-order-card .order-card-body {
@@ -1061,23 +1497,23 @@ const handleQuickAction = (action: any) => {
 
 .user-order-card .product-name {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 
 .user-order-card .order-amount {
   font-size: 14px;
-  font-weight: 700;
-  color: #ef4444;
+  font-weight: 600;
+  color: var(--danger);
 }
 
 /* 快速操作按钮样式 */
 .quick-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
-  padding-top: 16px;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
 }
 
@@ -1086,35 +1522,25 @@ const handleQuickAction = (action: any) => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: var(--surface-3);
+  background: var(--surface-hover);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   color: var(--text);
   font-size: 14px;
 }
 
 .quick-action-item:hover {
-  background: rgba(56, 189, 248, 0.15);
-  border-color: rgba(56, 189, 248, 0.4);
-  transform: translateX(4px);
-  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35);
+  background: var(--primary-lighter);
+  border-color: var(--primary);
 }
 
 /* 订单卡片样式 */
 .quick-action-item.order_card,
 .quick-action-item.order_card_simple {
   padding: 16px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-.quick-action-item.order_card:hover,
-.quick-action-item.order_card_simple:hover {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.5);
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.4);
+  background: var(--surface);
 }
 
 /* 简洁订单卡片内容 */
@@ -1252,6 +1678,11 @@ const handleQuickAction = (action: any) => {
   color: #ef4444;
 }
 
+.order-status.status-refunded {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
 .order-card-body {
   display: flex;
   flex-direction: column;
@@ -1293,6 +1724,168 @@ const handleQuickAction = (action: any) => {
 .order-time {
   font-size: 12px;
   color: var(--muted);
+}
+
+/* 地址卡片样式 */
+.quick-action-item.address {
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.quick-action-item.address:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.address-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.address-card-contact {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.address-card-detail {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* 优惠券卡片样式 */
+.quick-action-item.coupon {
+  padding: 14px 16px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.quick-action-item.coupon:hover {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.coupon-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coupon-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.coupon-card-info {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 售后卡片样式 */
+.quick-action-item.refund_card {
+  padding: 14px 16px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.quick-action-item.refund_card:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.refund-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.refund-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.refund-no {
+  font-size: 13px;
+  color: var(--muted);
+  font-family: monospace;
+}
+
+.refund-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.refund-status.status-pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: #f59e0b;
+}
+
+.refund-status.status-approved {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.refund-status.status-rejected {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.refund-status.status-returning {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.refund-status.status-refunding {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.refund-status.status-completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.refund-status.status-cancelled {
+  background: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.refund-card-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refund-type {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.refund-product {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.refund-card-footer {
+  display: flex;
+  align-items: center;
+}
+
+.refund-amount {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ef4444;
 }
 
 /* 商品卡片样式 */
@@ -1442,10 +2035,73 @@ const handleQuickAction = (action: any) => {
   box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
 }
 
+/* 图片预览样式 */
+.file-item {
+  display: inline-block;
+}
+
+.image-preview-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--surface-3);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35);
+  transition: all 0.3s ease;
+}
+
+.image-preview-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
+}
+
+.preview-image {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.image-preview-item .file-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-preview-item .remove-icon {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background: var(--danger);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.image-preview-item .remove-icon:hover {
+  transform: scale(1.1);
+  background: var(--danger-dark);
+}
+
 .input-area {
   display: flex;
-  gap: 16px;
-  padding: 16px 32px;
+  gap: 12px;
+  padding: 16px 20px;
   background: var(--surface);
   align-items: center;
   position: relative;
@@ -1454,8 +2110,8 @@ const handleQuickAction = (action: any) => {
 }
 
 .input-area.drag-over {
-  background: rgba(56, 189, 248, 0.1);
-  border: 2px dashed rgba(56, 189, 248, 0.6);
+  background: var(--primary-lighter);
+  border: 2px dashed var(--primary);
 }
 
 .drag-overlay {
@@ -1464,26 +2120,24 @@ const handleQuickAction = (action: any) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(56, 189, 248, 0.08);
+  background: var(--primary-lighter);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 10;
   pointer-events: none;
-  backdrop-filter: blur(2px);
 }
 
 .drag-overlay .el-icon {
-  color: var(--accent);
-  margin-bottom: 12px;
-  font-size: 48px;
+  color: var(--primary);
+  margin-bottom: 8px;
+  font-size: 32px;
 }
 
 .drag-overlay span {
   color: var(--text);
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 14px;
 }
 
 .upload-btn {
@@ -1491,80 +2145,66 @@ const handleQuickAction = (action: any) => {
 }
 
 .upload-btn :deep(.el-button) {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--surface-2);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--surface-hover);
   border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 20px;
-  transition: all 0.3s ease;
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.4);
-}
-
-.upload-btn :deep(.el-button:hover) {
-  transform: scale(1.05);
-  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.55);
+  color: var(--text-muted);
 }
 
 .order-btn {
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--surface-2);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--surface-hover);
   border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 20px;
-  transition: all 0.3s ease;
-  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.4);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .order-btn:hover {
-  transform: scale(1.05);
-  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.55);
-  background: rgba(56, 189, 248, 0.15);
-  border-color: rgba(56, 189, 248, 0.4);
+  background: var(--primary-lighter);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .input-area :deep(.el-textarea__inner) {
-  border-radius: 14px;
-  padding: 12px 16px;
-  font-size: 15px;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
   border: 1px solid var(--border);
-  transition: all 0.3s ease;
-  background: var(--surface-3);
+  background: var(--surface-hover);
   color: var(--text);
-  min-height: 48px !important;
-  max-height: 120px;
+  min-height: 40px !important;
+  max-height: 100px;
 }
 
 .input-area :deep(.el-textarea__inner:focus) {
-  border-color: rgba(56, 189, 248, 0.7);
+  border-color: var(--primary);
   background: var(--surface-2);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
 }
 
 .input-area :deep(.el-button--primary) {
-  height: 48px;
-  padding: 0 32px;
-  border-radius: 24px;
-  background: rgba(56, 189, 248, 0.25);
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  font-weight: 600;
-  font-size: 15px;
-  transition: all 0.3s ease;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
-  color: var(--text);
+  height: 40px;
+  padding: 0 20px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  border: none;
+  font-weight: 500;
+  font-size: 14px;
 }
 
 .input-area :deep(.el-button--primary:hover) {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.55);
+  background: var(--primary-light);
 }
 
 .input-area :deep(.el-button--primary:active) {
-  transform: translateY(0);
+  background: var(--primary-dark);
 }
 
 /* 思考面板样式 */
@@ -1672,5 +2312,145 @@ const handleQuickAction = (action: any) => {
   color: var(--muted);
   margin-top: 8px;
   font-style: italic;
+}
+
+/* 支付密码弹窗样式 */
+.payment-dialog :deep(.el-dialog__header) {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 24px;
+  margin-right: 0;
+}
+
+.payment-dialog :deep(.el-dialog__title) {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.payment-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+  background: var(--surface);
+}
+
+.payment-dialog :deep(.el-dialog__footer) {
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  padding: 16px 24px;
+}
+
+.payment-info {
+  text-align: center;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.payment-order-no {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  font-family: monospace;
+}
+
+.payment-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.amount-label {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.amount-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+.password-input-section {
+  margin-bottom: 24px;
+}
+
+.password-label {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.password-dots {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.password-dot {
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--text);
+  background: var(--surface-3);
+  transition: all 0.2s ease;
+}
+
+.password-dot.filled {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.password-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.numpad-key {
+  aspect-ratio: 1.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.numpad-key:hover:not(.disabled) {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.numpad-key:active:not(.disabled) {
+  transform: translateY(0);
+}
+
+.numpad-key.disabled {
+  cursor: default;
+  background: transparent;
+  border-color: transparent;
 }
 </style>

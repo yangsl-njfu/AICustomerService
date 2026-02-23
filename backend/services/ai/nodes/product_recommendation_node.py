@@ -129,6 +129,29 @@ class ProductRecommendationNode(BaseNode):
                     "icon": "📦"
                 }
             ]
+            
+            for p in products[:3]:
+                product_title = p.get('title', '')[:12]
+                state["quick_actions"].append({
+                    "type": "button",
+                    "label": f"立即购买: {product_title}",
+                    "action": "purchase_flow",
+                    "data": {
+                        "step": "confirm_product",
+                        "product_id": p.get("id")
+                    },
+                    "icon": "💳"
+                })
+                state["quick_actions"].append({
+                    "type": "button",
+                    "label": f"加入购物车: {product_title}",
+                    "action": "add_to_cart",
+                    "data": {
+                        "product_id": p.get("id"),
+                        "product": p
+                    },
+                    "icon": "🛒"
+                })
         else:
             state["response"] = """抱歉，暂时没有找到符合您需求的商品。
 

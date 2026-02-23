@@ -95,14 +95,44 @@ class OrderQueryNode(BaseNode):
                         "data": {"path": f"/orders"},
                         "icon": "💰"
                     })
-                elif target_order.get("status") in ["completed", "delivered"]:
-                    quick_actions.append({
-                        "type": "button",
-                        "label": "申请退款",
-                        "action": "send_question",
-                        "data": {"question": f"我要申请退款，订单号 {order_no}"},
-                        "icon": "💰"
-                    })
+                # 根据订单状态提供不同的售后选项
+                order_status = target_order.get("status")
+                if order_status in ["paid", "delivered", "completed"]:
+                    # 已支付/已送达/已完成的订单可以申请售后
+                    if order_status == "paid":
+                        # 已支付但未发货，可以申请仅退款
+                        quick_actions.append({
+                            "type": "button",
+                            "label": "申请退款",
+                            "action": "aftersales_flow",
+                            "data": {
+                                "step": "select_type",
+                                "order_id": target_order.get("id"),
+                                "order_no": order_no,
+                                "status": order_status,
+                                "product_name": items[0].get("product_title", "商品") if items else "商品",
+                                "total_amount": target_order.get("total_amount", 0) / 100,  # 转换为元
+                                "items": items  # 传入商品信息用于计算退款金额
+                            },
+                            "icon": "💰"
+                        })
+                    else:
+                        # 已发货/已完成，可以申请售后（退款/退货/换货）
+                        quick_actions.append({
+                            "type": "button",
+                            "label": "申请售后",
+                            "action": "aftersales_flow",
+                            "data": {
+                                "step": "select_type",
+                                "order_id": target_order.get("id"),
+                                "order_no": order_no,
+                                "status": order_status,
+                                "product_name": items[0].get("product_title", "商品") if items else "商品",
+                                "total_amount": target_order.get("total_amount", 0) / 100,  # 转换为元
+                                "items": items  # 传入商品信息用于计算退款金额
+                            },
+                            "icon": "🔄"
+                        })
                 
                 quick_actions.extend([
                     {

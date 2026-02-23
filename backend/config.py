@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
     SILICONFLOW_EMBEDDING_MODEL: str = "BAAI/bge-m3"
     
+    # 视觉LLM 配置（多模态文档理解）
+    # 可选模型: PaddlePaddle/PaddleOCR-VL (免费, 文档OCR专用)
+    #          Qwen/Qwen3-VL-8B-Thinking (通用视觉推理, 支持工具调用)
+    VISION_LLM_ENABLED: bool = True  # 是否启用视觉LLM
+    VISION_LLM_API_KEY: str = "sk-hklglgcilrklgxpyammlohiqlurmnsdggxzyvooxcceckqep"  # 硅基流动 API Key
+    VISION_LLM_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    VISION_LLM_MODEL: str = "Qwen/Qwen3-VL-8B-Thinking"  # 模型名称
+    
     # 文件上传配置
     UPLOAD_DIR: str = "./data/uploads"
     MAX_FILE_SIZE: int = 10485760  # 10MB

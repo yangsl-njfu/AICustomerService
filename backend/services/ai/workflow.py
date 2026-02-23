@@ -23,7 +23,9 @@ from .nodes import (
     PersonalizedRecommendNode,
     ProductInquiryNode,
     OrderQueryNode,
-    PurchaseGuideNode
+    PurchaseGuideNode,
+    PurchaseFlowNode,
+    AftersalesFlowNode
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,8 @@ class AIWorkflow:
         self.product_inquiry_node = ProductInquiryNode(self.llm)
         self.order_query_node = OrderQueryNode(self.llm)
         self.purchase_guide_node = PurchaseGuideNode(self.llm)
+        self.purchase_flow_node = PurchaseFlowNode()
+        self.aftersales_flow_node = AftersalesFlowNode()
         
         self.graph = self._build_graph()
     
@@ -105,7 +109,7 @@ class AIWorkflow:
         
         return workflow.compile()
     
-    def _make_initial_state(self, user_id, session_id, message, attachments):
+    def _make_initial_state(self, user_id, session_id, message, attachments, purchase_flow=None, aftersales_flow=None):
         return ConversationState(
             user_message=message, user_id=user_id, session_id=session_id,
             attachments=attachments, conversation_history=[], user_profile={},
@@ -113,13 +117,14 @@ class AIWorkflow:
             tool_result=None, tool_used=None, response="",
             sources=None, ticket_id=None, recommended_products=None,
             quick_actions=None, timestamp="", processing_time=None,
-            intent_history=[], conversation_summary=""
+            intent_history=[], conversation_summary="",
+            purchase_flow=purchase_flow, aftersales_flow=aftersales_flow
         )
 
-    async def process_message(self, user_id, session_id, message, attachments=None):
+    async def process_message(self, user_id, session_id, message, attachments=None, purchase_flow=None):
         """处理用户消息（非流式）"""
         start_time = datetime.now()
-        initial_state = self._make_initial_state(user_id, session_id, message, attachments)
+        initial_state = self._make_initial_state(user_id, session_id, message, attachments, purchase_flow)
         final_state = await self.graph.ainvoke(initial_state)
         final_state["processing_time"] = (datetime.now() - start_time).total_seconds()
         return final_state
@@ -149,6 +154,31 @@ class AIWorkflow:
 
     async def generate_response(self, state):
         """阶段2: function calling + 路由 + 生成回答，返回 state"""
+        
+        purchase_flow = state.get("purchase_flow")
+        if purchase_flow:
+            logger.info(f"🛒 [generate_response] 检测到购买流程, step={purchase_flow.get('step')}")
+            try:
+                result_state = await self.purchase_flow_node.execute(state)
+                state.update(result_state)
+                return state
+            except Exception as e:
+                logger.error(f"购买流程执行失败: {e}")
+                state["response"] = "抱歉，购买流程出现了问题，请重新开始。"
+                return state
+
+        aftersales_flow = state.get("aftersales_flow")
+        if aftersales_flow:
+            logger.info(f"🔄 [generate_response] 检测到售后流程, step={aftersales_flow.get('step')}")
+            try:
+                result_state = await self.aftersales_flow_node.execute(state)
+                state.update(result_state)
+                return state
+            except Exception as e:
+                logger.error(f"售后流程执行失败: {e}")
+                state["response"] = "抱歉，售后流程出现了问题，请重新开始。"
+                return state
+        
         logger.info(f"🎯 [generate_response] 开始, intent={state.get('intent')}")
         t0 = time.time()
         state = await self.function_calling_node.execute(state)
@@ -165,6 +195,7 @@ class AIWorkflow:
             "ticket_flow": self.ticket_node,
             "document_analysis": self.document_node,
             "purchase_guide": self.purchase_guide_node,
+            "aftersales_flow": self.aftersales_flow_node,
         }
         node = node_map.get(route, self.qa_node)
         
@@ -185,6 +216,37 @@ class AIWorkflow:
 
     async def generate_response_stream(self, state):
         """阶段2 流式版: function calling + 路由 + 逐 token yield 回答"""
+        
+        purchase_flow = state.get("purchase_flow")
+        if purchase_flow:
+            logger.info(f"🛒 [generate_response_stream] 检测到购买流程, step={purchase_flow.get('step')}, data={purchase_flow}")
+            try:
+                result_state = await self.purchase_flow_node.execute(state)
+                state.update(result_state)
+                yield {"type": "content", "delta": state.get("response", "")}
+                yield {"type": "end", "status": "success", "quick_actions": state.get("quick_actions")}
+                return
+            except Exception as e:
+                logger.error(f"购买流程执行失败: {e}")
+                yield {"type": "content", "delta": "抱歉，购买流程出现了问题，请重新开始。"}
+                yield {"type": "end", "status": "error"}
+                return
+
+        aftersales_flow = state.get("aftersales_flow")
+        if aftersales_flow:
+            logger.info(f"🔄 [generate_response_stream] 检测到售后流程, step={aftersales_flow.get('step')}")
+            try:
+                result_state = await self.aftersales_flow_node.execute(state)
+                state.update(result_state)
+                yield {"type": "content", "delta": state.get("response", "")}
+                yield {"type": "end", "status": "success", "quick_actions": state.get("quick_actions")}
+                return
+            except Exception as e:
+                logger.error(f"售后流程执行失败: {e}")
+                yield {"type": "content", "delta": "抱歉，售后流程出现了问题，请重新开始。"}
+                yield {"type": "end", "status": "error"}
+                return
+        
         t0 = time.time()
         state = await self.function_calling_node.execute(state)
         logger.info(f"⏱️ [function_calling_node] {time.time() - t0:.2f}s")
@@ -207,6 +269,7 @@ class AIWorkflow:
             "product_inquiry": self.product_inquiry_node,
             "order_query": self.order_query_node,
             "ticket_flow": self.ticket_node,
+            "aftersales_flow": self.aftersales_flow_node,
         }
 
         t0 = time.time()

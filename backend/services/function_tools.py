@@ -305,3 +305,203 @@ async def get_personalized_recommendations(user_id: str, limit: int = 5) -> dict
 all_tools = [query_order, search_products, get_user_info,
              check_inventory, get_logistics, calculate_price,
              get_personalized_recommendations]
+
+
+# ==================== 智能选题助手工具 ====================
+
+@tool
+async def search_projects(keyword: str, max_price: float = None,
+                          user_level: str = None) -> dict:
+    """搜索毕业设计项目。支持按关键词、预算、难度搜索。
+
+    Args:
+        keyword: 搜索关键词，如：医疗管理、在线问诊、图书管理系统
+        max_price: 最高预算（元），如：500
+        user_level: 用户水平，用于筛选合适难度：beginner(初学者)、intermediate(中级)、advanced(高级)
+    """
+    from database.connection import get_db_context
+    from services.product_service import ProductService
+
+    async with get_db_context() as db:
+        product_service = ProductService(db)
+
+        filters = {
+            "keyword": keyword,
+            "status": "published",
+            "page": 1,
+            "page_size": 10
+        }
+
+        if max_price:
+            filters["max_price"] = max_price
+
+        if user_level:
+            level_map = {
+                "beginner": "easy",
+                "intermediate": "medium",
+                "advanced": "hard"
+            }
+            filters["difficulty"] = level_map.get(user_level)
+
+        result = await product_service.search_products(**filters)
+        products = result.get("products", [])
+
+        return {
+            "success": True,
+            "total": len(products),
+            "keyword": keyword,
+            "budget": max_price,
+            "user_level": user_level,
+            "projects": [
+                {
+                    "id": p["id"],
+                    "title": p["title"],
+                    "price": float(p["price"]),
+                    "rating": float(p.get("rating", 0)),
+                    "sales_count": p.get("sales_count", 0),
+                    "tech_stack": p.get("tech_stack", []),
+                    "difficulty": p.get("difficulty", ""),
+                    "description": p.get("description", "")[:200]
+                }
+                for p in products
+            ]
+        }
+
+
+@tool
+async def get_project_detail(project_id: str) -> dict:
+    """获取毕设项目详情。包括完整的技术栈、功能模块、难度等级、价格等。
+
+    Args:
+        project_id: 项目ID
+    """
+    from database.connection import get_db_context
+    from services.product_service import ProductService
+
+    async with get_db_context() as db:
+        product_service = ProductService(db)
+        product = await product_service.get_product(project_id)
+
+        if not product:
+            return {
+                "success": False,
+                "error": "项目不存在"
+            }
+
+        return {
+            "success": True,
+            "project_id": project_id,
+            "title": product["title"],
+            "price": float(product["price"]),
+            "rating": float(product.get("rating", 0)),
+            "sales_count": product.get("sales_count", 0),
+            "tech_stack": product.get("tech_stack", []),
+            "difficulty": product.get("difficulty", ""),
+            "description": product.get("description", ""),
+            "features": product.get("features", []),
+            "requirements": product.get("requirements", []),
+            "has_applet": "小程序" in str(product.get("tech_stack", [])),
+            "has_admin_panel": "管理后台" in str(product.get("description", "")),
+            "is_前后端分离": "前后端分离" in str(product.get("description", ""))
+        }
+
+
+@tool
+async def compare_projects(project_ids: list[str]) -> dict:
+    """对比多个毕设项目的技术栈、难度、价格，帮助用户选择。
+
+    Args:
+        project_ids: 项目ID列表，如：["id1", "id2", "id3"]
+    """
+    from database.connection import get_db_context
+    from services.product_service import ProductService
+
+    async with get_db_context() as db:
+        product_service = ProductService(db)
+
+        projects = []
+        for pid in project_ids:
+            product = await product_service.get_product(pid)
+            if product:
+                projects.append({
+                    "id": pid,
+                    "title": product["title"],
+                    "price": float(product["price"]),
+                    "rating": float(product.get("rating", 0)),
+                    "tech_stack": product.get("tech_stack", []),
+                    "difficulty": product.get("difficulty", ""),
+                    "sales_count": product.get("sales_count", 0),
+                    "description": product.get("description", "")[:150]
+                })
+
+        if not projects:
+            return {
+                "success": False,
+                "error": "未找到任何项目"
+            }
+
+        min_price = min(p["price"] for p in projects)
+        max_price = max(p["price"] for p in projects)
+
+        return {
+            "success": True,
+            "total": len(projects),
+            "price_range": {"min": min_price, "max": max_price},
+            "projects": projects
+        }
+
+
+@tool
+async def check_tech_stack_match(project_id: str, user_skills: list[str]) -> dict:
+    """检查用户技术能力是否匹配项目要求。
+
+    Args:
+        project_id: 项目ID
+        user_skills: 用户掌握的技术列表，如：["Java", "Spring Boot", "Vue", "MySQL"]
+    """
+    from database.connection import get_db_context
+    from services.product_service import ProductService
+
+    async with get_db_context() as db:
+        product_service = ProductService(db)
+        product = await product_service.get_product(project_id)
+
+        if not product:
+            return {
+                "success": False,
+                "error": "项目不存在"
+            }
+
+        project_tech = [t.strip().lower() for t in product.get("tech_stack", [])]
+        user_skills_lower = [s.strip().lower() for s in user_skills]
+
+        matched = []
+        missing = []
+        for tech in project_tech:
+            if any(user_skill in tech or tech in user_skill for user_skill in user_skills_lower):
+                matched.append(tech)
+            else:
+                missing.append(tech)
+
+        match_rate = len(matched) / len(project_tech) if project_tech else 0
+
+        if match_rate >= 0.7:
+            level = "完全匹配"
+        elif match_rate >= 0.4:
+            level = "部分匹配"
+        else:
+            level = "不匹配"
+
+        return {
+            "success": True,
+            "project_id": project_id,
+            "title": product["title"],
+            "match_level": level,
+            "match_rate": round(match_rate * 100, 1),
+            "matched_tech": matched,
+            "missing_tech": missing,
+            "suggestion": f"该项目需要 {', '.join(missing)} 技术，建议提前学习" if missing else "您已具备该项目所需技术基础！"
+        }
+
+
+topic_advisor_tools = [search_projects, get_project_detail, compare_projects, check_tech_stack_match, get_personalized_recommendations]

@@ -47,3 +47,7 @@ class ConversationState(TypedDict):
 
     # 售后流程状态
     aftersales_flow: Optional[Dict[str, Any]]
+
+    # 智能选题 Agent 状态
+    topic_advisor_projects: Optional[List[Dict]]       # Agent 搜索到的项目
+    topic_advisor_tool_results: Optional[List[Dict]]   # Agent 工具调用日志

@@ -10,13 +10,12 @@ from .qa_node import QANode
 from .document_node import DocumentNode
 from .ticket_node import TicketNode
 from .clarify_node import ClarifyNode
-from .product_recommendation_node import ProductRecommendationNode
-from .personalized_recommend_node import PersonalizedRecommendNode
 from .product_inquiry_node import ProductInquiryNode
 from .order_query_node import OrderQueryNode
 from .purchase_guide_node import PurchaseGuideNode
 from .purchase_flow_node import PurchaseFlowNode
 from .aftersales_flow_node import AftersalesFlowNode
+from .topic_advisor_node import TopicAdvisorNode
 
 __all__ = [
     "BaseNode",
@@ -28,11 +27,10 @@ __all__ = [
     "DocumentNode",
     "TicketNode",
     "ClarifyNode",
-    "ProductRecommendationNode",
-    "PersonalizedRecommendNode",
     "ProductInquiryNode",
     "OrderQueryNode",
     "PurchaseGuideNode",
     "PurchaseFlowNode",
     "AftersalesFlowNode",
+    "TopicAdvisorNode",
 ]

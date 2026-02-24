@@ -19,13 +19,12 @@ from .nodes import (
     DocumentNode,
     TicketNode,
     ClarifyNode,
-    ProductRecommendationNode,
-    PersonalizedRecommendNode,
     ProductInquiryNode,
     OrderQueryNode,
     PurchaseGuideNode,
     PurchaseFlowNode,
-    AftersalesFlowNode
+    AftersalesFlowNode,
+    TopicAdvisorNode
 )
 
 logger = logging.getLogger(__name__)
@@ -47,13 +46,12 @@ class AIWorkflow:
         self.document_node = DocumentNode(self.llm)
         self.ticket_node = TicketNode(self.llm)
         self.clarify_node = ClarifyNode(self.llm)
-        self.product_recommendation_node = ProductRecommendationNode(self.llm)
-        self.personalized_recommend_node = PersonalizedRecommendNode(self.llm)
         self.product_inquiry_node = ProductInquiryNode(self.llm)
         self.order_query_node = OrderQueryNode(self.llm)
         self.purchase_guide_node = PurchaseGuideNode(self.llm)
         self.purchase_flow_node = PurchaseFlowNode()
         self.aftersales_flow_node = AftersalesFlowNode()
+        self.topic_advisor_node = TopicAdvisorNode(self.llm)
         
         self.graph = self._build_graph()
     
@@ -69,11 +67,10 @@ class AIWorkflow:
         workflow.add_node("document_analysis", self.document_node.execute)
         workflow.add_node("ticket_flow", self.ticket_node.execute)
         workflow.add_node("clarify", self.clarify_node.execute)
-        workflow.add_node("product_recommendation", self.product_recommendation_node.execute)
-        workflow.add_node("personalized_recommend", self.personalized_recommend_node.execute)
         workflow.add_node("product_inquiry", self.product_inquiry_node.execute)
         workflow.add_node("order_query", self.order_query_node.execute)
         workflow.add_node("purchase_guide", self.purchase_guide_node.execute)
+        workflow.add_node("topic_advisor", self.topic_advisor_node.execute)
 
         workflow.set_entry_point("load_context")
         workflow.add_edge("load_context", "intent_recognition")
@@ -87,11 +84,10 @@ class AIWorkflow:
                 "ticket_flow": "ticket_flow",
                 "product_flow": "qa_flow",
                 "document_analysis": "document_analysis",
-                "product_recommendation": "product_recommendation",
-                "personalized_recommend": "personalized_recommend",
                 "product_inquiry": "product_inquiry",
                 "purchase_guide": "purchase_guide",
                 "order_query": "order_query",
+                "topic_advisor": "topic_advisor",
                 "clarify": "clarify"
             }
         )
@@ -99,11 +95,10 @@ class AIWorkflow:
         workflow.add_edge("qa_flow", "save_context")
         workflow.add_edge("ticket_flow", "save_context")
         workflow.add_edge("document_analysis", "save_context")
-        workflow.add_edge("product_recommendation", "save_context")
-        workflow.add_edge("personalized_recommend", "save_context")
         workflow.add_edge("product_inquiry", "save_context")
         workflow.add_edge("purchase_guide", "save_context")
         workflow.add_edge("order_query", "save_context")
+        workflow.add_edge("topic_advisor", "save_context")
         workflow.add_edge("clarify", END)
         workflow.add_edge("save_context", END)
         
@@ -118,7 +113,8 @@ class AIWorkflow:
             sources=None, ticket_id=None, recommended_products=None,
             quick_actions=None, timestamp="", processing_time=None,
             intent_history=[], conversation_summary="",
-            purchase_flow=purchase_flow, aftersales_flow=aftersales_flow
+            purchase_flow=purchase_flow, aftersales_flow=aftersales_flow,
+            topic_advisor_projects=[], topic_advisor_tool_results=[]
         )
 
     async def process_message(self, user_id, session_id, message, attachments=None, purchase_flow=None):
@@ -180,14 +176,28 @@ class AIWorkflow:
                 return state
         
         logger.info(f"🎯 [generate_response] 开始, intent={state.get('intent')}")
+
+        # Agent 节点：跳过 function_calling，直接进入 Agent 自己的工具调用循环
+        if state.get("intent") == "推荐":
+            logger.info("🤖 [generate_response] 走 Agent 路径，跳过 function_calling")
+            try:
+                result_state = await self.topic_advisor_node.execute(state)
+                state.update(result_state)
+            except Exception as e:
+                logger.error(f"Agent 执行失败: {e}")
+                state["response"] = "抱歉，处理您的请求时出现了问题，请稍后再试。"
+            try:
+                await self.save_context_node.execute(state)
+            except Exception:
+                pass
+            return state
+
         t0 = time.time()
         state = await self.function_calling_node.execute(state)
         logger.info(f"⏱️ [function_calling_node] {time.time() - t0:.2f}s, tool_used={state.get('tool_used')}")
         route = self.router.route_after_function_calling(state)
         
         node_map = {
-            "product_recommendation": self.product_recommendation_node,
-            "personalized_recommend": self.personalized_recommend_node,
             "product_inquiry": self.product_inquiry_node,
             "order_query": self.order_query_node,
             "clarify": self.clarify_node,
@@ -196,6 +206,7 @@ class AIWorkflow:
             "document_analysis": self.document_node,
             "purchase_guide": self.purchase_guide_node,
             "aftersales_flow": self.aftersales_flow_node,
+            "topic_advisor": self.topic_advisor_node,
         }
         node = node_map.get(route, self.qa_node)
         
@@ -246,7 +257,27 @@ class AIWorkflow:
                 yield {"type": "content", "delta": "抱歉，售后流程出现了问题，请重新开始。"}
                 yield {"type": "end", "status": "error"}
                 return
-        
+
+        # Agent 节点：跳过 function_calling，直接进入 Agent 自己的工具调用循环
+        if state.get("intent") == "推荐":
+            logger.info("🤖 [generate_response_stream] 走 Agent 路径，跳过 function_calling")
+            try:
+                async for token in self.topic_advisor_node.execute_stream(state):
+                    yield {"type": "content", "delta": token}
+            except Exception as e:
+                logger.error(f"Agent 流式执行失败: {e}")
+                yield {"type": "content", "delta": "抱歉，处理您的请求时出现了问题，请稍后再试。"}
+            try:
+                await self.save_context_node.execute(state)
+            except Exception:
+                pass
+            yield {
+                "type": "end",
+                "quick_actions": state.get("quick_actions"),
+                "recommended_products": state.get("recommended_products"),
+            }
+            return
+
         t0 = time.time()
         state = await self.function_calling_node.execute(state)
         logger.info(f"⏱️ [function_calling_node] {time.time() - t0:.2f}s")
@@ -260,12 +291,11 @@ class AIWorkflow:
             "document_analysis": self.document_node,
             "purchase_guide": self.purchase_guide_node,
             "clarify": self.clarify_node,
+            "topic_advisor": self.topic_advisor_node,
         }
 
         # 非流式节点
         node_map = {
-            "product_recommendation": self.product_recommendation_node,
-            "personalized_recommend": self.personalized_recommend_node,
             "product_inquiry": self.product_inquiry_node,
             "order_query": self.order_query_node,
             "ticket_flow": self.ticket_node,

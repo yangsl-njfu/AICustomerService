@@ -12,7 +12,7 @@
       </template>
 
       <!-- 文档列表 -->
-      <el-table :data="documents" v-loading="loading" style="width: 100%">
+      <el-table v-loading="loading" :data="documents" style="width: 100%">
         <el-table-column prop="title" label="文档标题" min-width="200">
           <template #default="{ row }">
             <div class="doc-title">
@@ -124,9 +124,9 @@
         <el-button @click="handleCancel">取消</el-button>
         <el-button
           type="primary"
-          @click="handleUpload"
           :loading="uploading"
           :disabled="!selectedFile"
+          @click="handleUpload"
         >
           {{ uploading ? '上传中...' : '开始上传' }}
         </el-button>

@@ -4,7 +4,7 @@
       <el-header>
         <div class="header-content">
           <div class="logo">
-            <span class="logo-icon">🛒</span>
+            <el-icon class="logo-icon"><ShoppingBag /></el-icon>
             <h2>电商平台</h2>
           </div>
           <div class="user-info">
@@ -103,11 +103,13 @@ const handleLogout = () => {
 }
 
 .el-header {
-  background: #ffffff;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   padding: 0 32px;
+  box-shadow: var(--shadow-sm);
+  height: 60px;
 }
 
 .header-content {
@@ -125,6 +127,7 @@ const handleLogout = () => {
 
 .logo-icon {
   font-size: 24px;
+  color: var(--primary);
 }
 
 .logo h2 {
@@ -143,10 +146,11 @@ const handleLogout = () => {
 .username {
   color: var(--text-secondary);
   font-size: 14px;
+  font-weight: 500;
 }
 
 .el-aside {
-  background: #ffffff;
+  background: var(--surface);
   border-right: 1px solid var(--border);
 }
 
@@ -161,6 +165,7 @@ const handleLogout = () => {
   height: 44px;
   line-height: 44px;
   color: var(--text-secondary);
+  transition: all 0.2s ease;
 }
 
 .el-aside :deep(.el-menu-item .el-icon) {

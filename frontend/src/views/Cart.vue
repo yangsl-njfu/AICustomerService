@@ -48,8 +48,8 @@
             <div class="quantity-control">
               <button 
                 class="qty-btn" 
-                @click="updateQuantity(item.product_id, item.quantity - 1)"
                 :disabled="item.quantity <= 1"
+                @click="updateQuantity(item.product_id, item.quantity - 1)"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="5" y1="12" x2="19" y2="12"></line>

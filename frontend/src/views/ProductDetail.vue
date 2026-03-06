@@ -1,5 +1,5 @@
 <template>
-  <div class="product-detail-page" v-if="currentProduct">
+  <div v-if="currentProduct" class="product-detail-page">
     <div class="product-main">
       <div class="product-gallery">
         <img :src="currentProduct.cover_image || '/placeholder.png'" :alt="currentProduct.title" />
@@ -16,7 +16,7 @@
 
         <div class="product-price">
           <span class="price">¥{{ currentProduct.price.toFixed(2) }}</span>
-          <span class="original-price" v-if="currentProduct.original_price">
+          <span v-if="currentProduct.original_price" class="original-price">
             ¥{{ currentProduct.original_price.toFixed(2) }}
           </span>
         </div>

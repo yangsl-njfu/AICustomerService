@@ -3,7 +3,7 @@
     <!-- 侧边栏 - 会话列表 -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <el-button type="primary" @click="createNewSession" style="width: 100%">
+        <el-button type="primary" style="width: 100%" @click="createNewSession">
           <el-icon><Plus /></el-icon>
           新建对话
         </el-button>
@@ -11,24 +11,31 @@
 
       <div class="session-list">
         <div
-          v-for="session in chatStore.sessions"
-          :key="session.id"
-          class="session-item"
-          :class="{ active: chatStore.currentSession?.id === session.id }"
-          @click="selectSession(session.id)"
+          v-for="group in sessionGroups"
+          :key="group.label"
+          class="session-group"
         >
-          <div class="session-content">
-            <div class="session-title">{{ session.title }}</div>
-            <div class="session-info">{{ session.message_count }} 条消息</div>
-          </div>
-          <el-button
-            class="session-delete-btn"
-            type="danger"
-            link
-            @click.stop="deleteSession(session.id)"
+          <div class="session-group-title">{{ group.label }}</div>
+          <div
+            v-for="session in group.sessions"
+            :key="session.id"
+            class="session-item"
+            :class="{ active: chatStore.currentSession?.id === session.id }"
+            @click="selectSession(session.id)"
           >
-            <el-icon><Close /></el-icon>
-          </el-button>
+            <div class="session-content">
+              <div class="session-title">{{ session.title }}</div>
+              <div class="session-info">{{ session.message_count }} 条消息</div>
+            </div>
+            <el-button
+              class="session-delete-btn"
+              type="danger"
+              link
+              @click.stop="deleteSession(session.id)"
+            >
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -39,13 +46,14 @@
         <h3>{{ chatStore.currentSession?.title || '请选择或创建对话' }}</h3>
       </div>
 
-      <div class="message-list" ref="messageListRef">
-        <div
-          v-for="message in messageList"
-          :key="message.id"
-          class="message-item"
-          :class="message.role"
-        >
+      <div ref="messageListRef" class="message-list">
+        <div class="message-list-inner">
+          <div
+            v-for="(message, messageIndex) in messageList"
+            :key="message.id"
+            class="message-item"
+            :class="message.role"
+          >
           <!-- 用户消息 -->
           <template v-if="message.role === 'user'">
             <div class="message-avatar user-avatar">
@@ -120,7 +128,7 @@
               </div>
 
               <!-- 消息内容 -->
-              <div class="message-text" v-if="message.content">
+              <div v-if="message.content" class="message-text">
                 <MarkdownRenderer :content="message.content" />
               </div>
 
@@ -180,7 +188,7 @@
                         <span class="product-card-price">¥{{ action.data.price.toFixed(2) }}</span>
                       </div>
                       <div class="product-card-meta">
-                        <span class="product-card-rating">⭐ {{ action.data.rating }}</span>
+                        <span class="product-card-rating"><el-icon class="rating-icon"><Star /></el-icon>{{ action.data.rating }}</span>
                         <span class="product-card-sales">已售 {{ action.data.sales_count }}</span>
                       </div>
                       <div v-if="action.data.tech_stack && action.data.tech_stack.length > 0" class="product-card-tech">
@@ -220,7 +228,7 @@
                         <span class="refund-type">{{ action.data.refund_type_text }}</span>
                         <span class="refund-product">{{ action.data.product_name }}</span>
                       </div>
-                      <div class="refund-card-footer" v-if="action.data.refund_amount">
+                      <div v-if="action.data.refund_amount" class="refund-card-footer">
                         <span class="refund-amount">退款：¥{{ action.data.refund_amount.toFixed(2) }}</span>
                       </div>
                     </div>
@@ -229,7 +237,9 @@
 
                   <!-- 普通按钮样式 -->
                   <template v-else>
-                    <span v-if="action.icon" class="action-icon">{{ action.icon }}</span>
+                    <el-icon v-if="action.icon && quickActionIconMap[action.icon]" class="action-icon">
+                      <component :is="quickActionIconMap[action.icon]" />
+                    </el-icon>
                     <span class="action-label">{{ action.label }}</span>
                     <el-icon class="action-arrow"><ArrowRight /></el-icon>
                   </template>
@@ -239,6 +249,7 @@
               <div class="message-time">{{ formatTime(message.created_at) }}</div>
             </div>
           </template>
+          </div>
         </div>
       </div>
 
@@ -267,8 +278,8 @@
             <el-tag
               v-else
               closable
-              @close="removeFile(index)"
               class="file-tag"
+              @close="removeFile(index)"
             >
               <el-icon><Document /></el-icon>
               {{ file.name }}
@@ -291,44 +302,46 @@
           <span>释放文件以上传</span>
         </div>
 
-        <!-- 上传按钮 -->
-        <el-upload
-          ref="uploadRef"
-          action="#"
-          :auto-upload="false"
-          :on-change="handleFileChange"
-          :show-file-list="false"
-          :multiple="true"
-          accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg"
-          class="upload-btn"
-        >
-          <el-button type="info" circle>
-            <el-icon><Paperclip /></el-icon>
+        <div class="input-area-inner">
+          <!-- 上传按钮 -->
+          <el-upload
+            ref="uploadRef"
+            action="#"
+            :auto-upload="false"
+            :on-change="handleFileChange"
+            :show-file-list="false"
+            :multiple="true"
+            accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg"
+            class="upload-btn"
+          >
+            <el-button type="info" circle>
+              <el-icon><Paperclip /></el-icon>
+            </el-button>
+          </el-upload>
+
+          <!-- 选择订单按钮 -->
+          <el-button type="info" circle class="order-btn" @click="showOrderSelector">
+            <el-icon><ShoppingBag /></el-icon>
           </el-button>
-        </el-upload>
 
-        <!-- 选择订单按钮 -->
-        <el-button type="info" circle @click="showOrderSelector" class="order-btn">
-          <el-icon><ShoppingBag /></el-icon>
-        </el-button>
-
-        <el-input
-          v-model="inputMessage"
-          type="textarea"
-          :rows="1"
-          :autosize="{ minRows: 1, maxRows: 4 }"
-          placeholder="输入消息... 或直接拖拽/粘贴文件到此处"
-          @keydown.enter.exact.prevent="handleEnterKey"
-          @paste="handlePaste"
-        />
-        <el-button
-          type="primary"
-          @click="sendMessage"
-          :loading="chatStore.loading || uploading"
-          :disabled="chatStore.loading || uploading"
-        >
-          {{ uploading ? '上传中...' : '发送' }}
-        </el-button>
+          <el-input
+            v-model="inputMessage"
+            type="textarea"
+            :rows="1"
+            :autosize="{ minRows: 1, maxRows: 4 }"
+            placeholder="输入消息... 或直接拖拽/粘贴文件到此处"
+            @keydown.enter.exact.prevent="handleEnterKey"
+            @paste="handlePaste"
+          />
+          <el-button
+            type="primary"
+            :loading="chatStore.loading || uploading"
+            :disabled="chatStore.loading || uploading"
+            @click="sendMessage"
+          >
+            {{ uploading ? '上传中...' : '发送' }}
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -388,12 +401,12 @@
       </div>
       
       <template #footer>
-        <el-button @click="closePaymentDialog" :disabled="paymentProcessing">取消</el-button>
+        <el-button :disabled="paymentProcessing" @click="closePaymentDialog">取消</el-button>
         <el-button 
           type="primary" 
-          @click="confirmPayment" 
-          :loading="paymentProcessing"
+          :loading="paymentProcessing" 
           :disabled="paymentPassword.length !== 6"
+          @click="confirmPayment"
         >
           确认支付
         </el-button>
@@ -408,7 +421,7 @@ import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
-import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag, Close } from '@element-plus/icons-vue'
+import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag, Close, Star, Box, Coin, QuestionFilled } from '@element-plus/icons-vue'
 import { apiClient } from '@/api/client'
 import { ElMessage } from 'element-plus'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -427,6 +440,48 @@ const uploading = ref(false)
 const isDragOver = ref(false)
 const expandedThinking = ref<Record<string, boolean>>({})
 const orderSelectorVisible = ref(false)
+const quickActionIconMap: Record<string, any> = {
+  package: Box,
+  refund: Coin,
+  cart: ShoppingBag,
+  help: QuestionFilled
+}
+
+const sessionGroups = computed(() => {
+  const sortedSessions = [...chatStore.sessions].sort((a, b) => {
+    const timeA = new Date(a.created_at).getTime()
+    const timeB = new Date(b.created_at).getTime()
+    return timeB - timeA
+  })
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  const startOfLast7Days = new Date(startOfToday)
+  startOfLast7Days.setDate(startOfLast7Days.getDate() - 6)
+  const groups: Record<string, typeof sortedSessions> = {}
+  for (const session of sortedSessions) {
+    const sessionTime = new Date(session.created_at)
+    let label = '更早'
+    if (!Number.isNaN(sessionTime.getTime())) {
+      if (sessionTime >= startOfToday) {
+        label = '今天'
+      } else if (sessionTime >= startOfYesterday) {
+        label = '昨天'
+      } else if (sessionTime >= startOfLast7Days) {
+        label = '前7天'
+      }
+    }
+    if (!groups[label]) {
+      groups[label] = []
+    }
+    groups[label].push(session)
+  }
+  const order = ['今天', '昨天', '前7天', '更早']
+  return order
+    .filter(label => groups[label]?.length)
+    .map(label => ({ label, sessions: groups[label] }))
+})
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_CONFIG = {
@@ -447,7 +502,7 @@ const compressImage = async (file: File): Promise<File> => {
     return file
   }
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
     
@@ -544,6 +599,7 @@ const createNewSession = async () => {
 const selectSession = async (sessionId: string) => {
   await chatStore.selectSession(sessionId)
 }
+
 
 const deleteSession = async (sessionId: string) => {
   const success = await chatStore.deleteSession(sessionId)
@@ -1239,20 +1295,21 @@ const handleQuickAction = async (action: any) => {
 .chat-container {
   display: flex;
   height: 100%;
-  background: var(--bg);
-  padding: 20px;
+  background: transparent;
+  padding: 24px;
   gap: 20px;
   overflow: hidden;
 }
 
 .sidebar {
-  width: 280px;
+  width: 300px;
   background: var(--surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header {
@@ -1263,19 +1320,31 @@ const handleQuickAction = async (action: any) => {
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px;
+}
+
+.session-group {
+  margin-bottom: 10px;
+}
+
+.session-group-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+  padding: 6px 10px;
 }
 
 .session-item {
-  padding: 14px 16px;
-  margin-bottom: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
   cursor: pointer;
   border-radius: var(--radius);
   transition: all 0.2s ease;
-  background: var(--surface-hover);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border: 1px solid transparent;
 }
 
 .session-content {
@@ -1294,24 +1363,30 @@ const handleQuickAction = async (action: any) => {
 }
 
 .session-item:hover {
-  background: var(--surface-3);
+  background: var(--surface-hover);
   color: var(--text);
+  border-color: var(--border);
 }
 
 .session-item.active {
-  background: var(--primary-lighter);
+  background: rgba(37, 99, 235, 0.08);
   color: var(--primary);
+  border-color: rgba(37, 99, 235, 0.2);
 }
 
 .session-title {
   font-weight: 500;
-  margin-bottom: 4px;
-  font-size: 14px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .session-info {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 11px;
+  color: var(--text-light);
 }
 
 .chat-main {
@@ -1323,11 +1398,14 @@ const handleQuickAction = async (action: any) => {
   border: 1px solid var(--border);
   overflow: hidden;
   min-height: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-header {
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .chat-header h3 {
@@ -1339,9 +1417,14 @@ const handleQuickAction = async (action: any) => {
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
-  background: var(--bg);
+  padding: 20px 24px;
+  background: var(--surface-2);
   min-height: 0;
+}
+
+.message-list-inner {
+  max-width: 860px;
+  margin: 0 auto;
 }
 
 .message-item {
@@ -1357,7 +1440,7 @@ const handleQuickAction = async (action: any) => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--surface-hover);
+  background: var(--surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1367,25 +1450,48 @@ const handleQuickAction = async (action: any) => {
 }
 
 .message-item.user .message-avatar {
-  background: var(--primary-lighter);
+  background: rgba(37, 99, 235, 0.12);
 }
 
 .message-content {
-  max-width: 70%;
+  max-width: 720px;
   background: var(--surface);
   padding: 12px 16px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
 }
 
+.message-item.assistant .message-content,
+.message-item.system .message-content {
+  box-shadow: var(--shadow-sm);
+}
+
 .message-item.user .message-content {
-  background: var(--primary-lighter);
-  border-color: var(--primary-lighter);
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.2);
 }
 
 .message-text {
-  line-height: 1.6;
+  line-height: 1.7;
   font-size: 14px;
+}
+
+.message-text :deep(p) {
+  margin: 6px 0;
+}
+
+.message-text :deep(p + p) {
+  margin-top: 10px;
+}
+
+.message-text :deep(ul),
+.message-text :deep(ol) {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+
+.message-text :deep(li) {
+  margin: 4px 0;
 }
 
 .message-item.user .message-text {
@@ -1457,6 +1563,7 @@ const handleQuickAction = async (action: any) => {
   color: var(--text);
 }
 
+
 /* 用户发送的订单卡片样式 */
 .user-order-card {
   margin-top: 12px;
@@ -1522,13 +1629,14 @@ const handleQuickAction = async (action: any) => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: var(--surface-hover);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--text);
   font-size: 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .quick-action-item:hover {
@@ -1947,6 +2055,10 @@ const handleQuickAction = async (action: any) => {
   color: #f59e0b;
 }
 
+.product-card-rating .rating-icon {
+  font-size: 14px;
+}
+
 .product-card-sales {
   color: var(--muted);
 }
@@ -1976,6 +2088,7 @@ const handleQuickAction = async (action: any) => {
 .action-icon {
   font-size: 18px;
   flex-shrink: 0;
+  color: var(--accent);
 }
 
 .action-label {
@@ -2024,15 +2137,14 @@ const handleQuickAction = async (action: any) => {
   padding: 8px 14px;
   background: var(--surface-3);
   border-radius: 999px;
-  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
   border: 1px solid var(--border);
   color: var(--text);
 }
 
 .file-tag:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
+  box-shadow: var(--shadow);
 }
 
 /* 图片预览样式 */
@@ -2050,13 +2162,12 @@ const handleQuickAction = async (action: any) => {
   background: var(--surface-3);
   border-radius: 12px;
   border: 1px solid var(--border);
-  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
 }
 
 .image-preview-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
+  box-shadow: var(--shadow);
 }
 
 .preview-image {
@@ -2100,8 +2211,7 @@ const handleQuickAction = async (action: any) => {
 
 .input-area {
   display: flex;
-  gap: 12px;
-  padding: 16px 20px;
+  padding: 16px 24px;
   background: var(--surface);
   align-items: center;
   position: relative;
@@ -2144,9 +2254,18 @@ const handleQuickAction = async (action: any) => {
   flex-shrink: 0;
 }
 
+.input-area-inner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
 .upload-btn :deep(.el-button) {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius);
   background: var(--surface-hover);
   border: 1px solid var(--border);
@@ -2155,8 +2274,8 @@ const handleQuickAction = async (action: any) => {
 
 .order-btn {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius);
   background: var(--surface-hover);
   border: 1px solid var(--border);
@@ -2174,12 +2293,13 @@ const handleQuickAction = async (action: any) => {
 
 .input-area :deep(.el-textarea__inner) {
   border-radius: var(--radius);
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: 14px;
+  line-height: 1.5;
   border: 1px solid var(--border);
   background: var(--surface-hover);
   color: var(--text);
-  min-height: 40px !important;
+  min-height: 44px !important;
   max-height: 100px;
 }
 
@@ -2190,7 +2310,7 @@ const handleQuickAction = async (action: any) => {
 }
 
 .input-area :deep(.el-button--primary) {
-  height: 40px;
+  height: 44px;
   padding: 0 20px;
   border-radius: var(--radius);
   background: var(--primary);

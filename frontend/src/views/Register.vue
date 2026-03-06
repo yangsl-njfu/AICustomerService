@@ -5,7 +5,7 @@
         <h2>注册账号</h2>
       </template>
 
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="80px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" placeholder="请输入用户名" />
         </el-form-item>
@@ -19,13 +19,13 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="handleRegister" :loading="loading" style="width: 100%">
+          <el-button type="primary" :loading="loading" style="width: 100%" @click="handleRegister">
             注册
           </el-button>
         </el-form-item>
 
         <el-form-item>
-          <el-button text @click="goLogin" style="width: 100%">
+          <el-button text style="width: 100%" @click="goLogin">
             已有账号？去登录
           </el-button>
         </el-form-item>
@@ -146,9 +146,9 @@ const goLogin = () => {
 }
 
 .register-card :deep(.el-button--primary) {
-  background: rgba(56, 189, 248, 0.2);
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  color: var(--text);
+  background: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  color: #ffffff;
   font-weight: 600;
   border-radius: 12px;
 }

@@ -16,7 +16,7 @@
             placeholder="搜索你需要的毕业设计项目..."
             @keyup.enter="handleSearch"
           />
-          <button @click="handleSearch" class="search-btn">
+          <button class="search-btn" @click="handleSearch">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"></circle>
               <path d="m21 21-4.35-4.35"></path>
@@ -81,13 +81,13 @@
       </div>
 
       <div class="sort-group">
-        <select v-model="searchParams.sort_by" @change="handleSort" class="sort-select">
+        <select v-model="searchParams.sort_by" class="sort-select" @change="handleSort">
           <option value="created_at">最新发布</option>
           <option value="sales_count">销量最高</option>
           <option value="rating">评分最高</option>
           <option value="price">价格排序</option>
         </select>
-        <select v-model="searchParams.order" @change="handleSort" class="order-select">
+        <select v-model="searchParams.order" class="order-select" @change="handleSort">
           <option value="desc">↓ 降序</option>
           <option value="asc">↑ 升序</option>
         </select>
@@ -128,7 +128,7 @@
       </div>
 
       <!-- 分页 -->
-      <div class="pagination" v-if="totalPages > 1">
+      <div v-if="totalPages > 1" class="pagination">
         <button 
           class="page-btn"
           :disabled="searchParams.page === 1" 

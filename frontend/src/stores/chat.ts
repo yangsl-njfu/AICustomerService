@@ -383,28 +383,28 @@ export const useChatStore = defineStore('chat', () => {
               label: '订单有问题',
               action: 'send_question',
               data: { question: '我的订单有问题' },
-              icon: '📦'
+              icon: 'package'
             },
             {
               type: 'button',
               label: '如何申请退款?',
               action: 'send_question',
               data: { question: '如何申请退款?' },
-              icon: '💰'
+              icon: 'refund'
             },
             {
               type: 'button',
               label: '如何购买作品?',
               action: 'send_question',
               data: { question: '如何购买作品?' },
-              icon: '🛒'
+              icon: 'cart'
             },
             {
               type: 'button',
               label: '使用遇到问题',
               action: 'send_question',
               data: { question: '使用遇到问题怎么办?' },
-              icon: '❓'
+              icon: 'help'
             }
           ]
         }

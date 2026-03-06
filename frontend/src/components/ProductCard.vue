@@ -2,7 +2,7 @@
   <div class="product-card" @click="goToDetail">
     <div class="product-image">
       <img :src="product.cover_image || '/placeholder.png'" :alt="product.title" />
-      <div class="product-badge" v-if="product.original_price">
+      <div v-if="product.original_price" class="product-badge">
         <span class="discount">特惠</span>
       </div>
     </div>
@@ -14,7 +14,7 @@
         <span class="difficulty" :class="`difficulty-${product.difficulty}`">
           {{ difficultyText }}
         </span>
-        <span class="tech-stack" v-if="product.tech_stack && product.tech_stack.length > 0">
+        <span v-if="product.tech_stack && product.tech_stack.length > 0" class="tech-stack">
           {{ product.tech_stack.slice(0, 2).join(', ') }}
           <span v-if="product.tech_stack.length > 2">...</span>
         </span>
@@ -22,7 +22,7 @@
       
       <div class="product-stats">
         <span class="rating">
-          <span class="star">⭐</span>
+          <el-icon class="star"><Star /></el-icon>
           {{ product.rating.toFixed(1) }}
         </span>
         <span class="sales">销量 {{ product.sales_count }}</span>
@@ -31,7 +31,7 @@
       <div class="product-footer">
         <div class="price-section">
           <span class="price">¥{{ product.price.toFixed(2) }}</span>
-          <span class="original-price" v-if="product.original_price">
+          <span v-if="product.original_price" class="original-price">
             ¥{{ product.original_price.toFixed(2) }}
           </span>
         </div>
@@ -48,6 +48,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
+import { Star } from '@element-plus/icons-vue'
 import type { Product } from '@/stores/product'
 
 const props = defineProps<{
@@ -91,12 +92,12 @@ async function handleAddToCart() {
   display: flex;
   flex-direction: column;
   height: 100%;
+  box-shadow: var(--shadow-sm);
 }
 
 .product-card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-4px);
-  border-color: var(--primary-light);
+  box-shadow: var(--shadow);
+  border-color: rgba(37, 99, 235, 0.2);
 }
 
 .product-image {
@@ -129,13 +130,13 @@ async function handleAddToCart() {
 }
 
 .discount {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
-  padding: 6px 12px;
-  border-radius: 20px;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary);
+  padding: 4px 10px;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+  border: 1px solid rgba(37, 99, 235, 0.2);
 }
 
 .product-info {
@@ -174,25 +175,25 @@ async function handleAddToCart() {
 }
 
 .difficulty-easy {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: #e0f2fe;
+  color: #0284c7;
 }
 
 .difficulty-medium {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .difficulty-hard {
-  background: #fff1f0;
-  color: #ff4d4f;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .tech-stack {
   font-size: 12px;
   color: var(--text-secondary);
   padding: 4px 10px;
-  background: var(--bg-light);
+  background: var(--surface-2);
   border-radius: 12px;
 }
 
@@ -213,6 +214,7 @@ async function handleAddToCart() {
 
 .star {
   font-size: 14px;
+  color: #f59e0b;
 }
 
 .sales {
@@ -250,18 +252,17 @@ async function handleAddToCart() {
   padding: 8px 16px;
   background: var(--primary);
   color: white;
-  border: none;
-  border-radius: 20px;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .add-cart-btn:hover {
   background: var(--primary-dark);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.2);
 }
 </style>

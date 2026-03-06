@@ -45,7 +45,7 @@
 
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" @click="confirmSelection" :disabled="!selectedOrder">
+      <el-button type="primary" :disabled="!selectedOrder" @click="confirmSelection">
         确定
       </el-button>
     </template>

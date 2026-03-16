@@ -1,9 +1,13 @@
 """
 应用配置模块
 """
+import logging
 import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -12,9 +16,10 @@ class Settings(BaseSettings):
     # 应用配置
     APP_NAME: str = "AI客服系统"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+    DEFAULT_BUSINESS_ID: str = "graduation-marketplace"
     
     # 数据库配置
     MYSQL_HOST: str = "localhost"
@@ -28,12 +33,14 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ""
     REDIS_DB: int = 0
+    REDIS_REQUIRED: bool = False
+    CONTEXT_CACHE_TTL_SECONDS: int = 86400
     
     # FAISS配置
     FAISS_PERSIST_DIRECTORY: str = "./data/faiss"
     
     # JWT配置
-    JWT_SECRET_KEY: str = "your-secret-key-change-this"
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -43,7 +50,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4"
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
-    DEEPSEEK_API_KEY: str = "sk-97b7c12d6b2f4b10b96798ac85f4dbf4"
+    DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_MODEL: str = "deepseek-chat"
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     LLM_TEMPERATURE: float = 0.7
@@ -65,7 +72,7 @@ class Settings(BaseSettings):
     # 可选模型: PaddlePaddle/PaddleOCR-VL (免费, 文档OCR专用)
     #          Qwen/Qwen3-VL-8B-Thinking (通用视觉推理, 支持工具调用)
     VISION_LLM_ENABLED: bool = True  # 是否启用视觉LLM
-    VISION_LLM_API_KEY: str = "sk-hklglgcilrklgxpyammlohiqlurmnsdggxzyvooxcceckqep"  # 硅基流动 API Key
+    VISION_LLM_API_KEY: str = ""
     VISION_LLM_BASE_URL: str = "https://api.siliconflow.cn/v1"
     VISION_LLM_MODEL: str = "Qwen/Qwen3-VL-8B-Thinking"  # 模型名称
     
@@ -97,6 +104,18 @@ class Settings(BaseSettings):
     
     # CORS配置
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug_flag(cls, value):
+        """Allow environment values such as 'release' and 'production'."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production", "false", "0", "off", "no"}:
+                return False
+            if normalized in {"debug", "dev", "development", "true", "1", "on", "yes"}:
+                return True
+        return value
     
     @property
     def database_url(self) -> str:
@@ -141,6 +160,27 @@ class Settings(BaseSettings):
         """获取允许的文件扩展名列表"""
         return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",")]
     
+    def validate_runtime_configuration(self) -> None:
+        """Fail fast on unsafe runtime configuration."""
+        errors: List[str] = []
+
+        if not self.JWT_SECRET_KEY or self.JWT_SECRET_KEY == "your-secret-key-change-this":
+            errors.append("JWT_SECRET_KEY must be set to a non-default secret")
+
+        provider = (self.LLM_PROVIDER or "").strip().lower()
+        if provider == "deepseek" and not self.DEEPSEEK_API_KEY:
+            errors.append("DEEPSEEK_API_KEY must be set when LLM_PROVIDER=deepseek")
+        if provider == "openai" and not self.OPENAI_API_KEY:
+            errors.append("OPENAI_API_KEY must be set when LLM_PROVIDER=openai")
+
+        if self.VISION_LLM_ENABLED and not self.VISION_LLM_API_KEY:
+            logger.warning(
+                "VISION_LLM_ENABLED=true but VISION_LLM_API_KEY is empty; vision analysis will be disabled"
+            )
+
+        if errors:
+            raise RuntimeError("Invalid runtime configuration: " + "; ".join(errors))
+
     class Config:
         # 尝试多个可能的 .env 文件位置
         env_file = ".env" if os.path.exists(".env") else "backend/.env"

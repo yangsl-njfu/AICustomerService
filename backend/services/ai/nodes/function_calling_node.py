@@ -1,113 +1,128 @@
-"""
-Function Calling节点 - 使用 LangChain 原生 Tool Binding
-"""
+"""Function-calling node backed by runtime-managed tools."""
+from __future__ import annotations
+
 import logging
-from .base import BaseNode
-from ..state import ConversationState
+
 from services.function_tools import all_tools
+
+from ..constants import (
+    INTENT_DOCUMENT_ANALYSIS,
+    INTENT_PURCHASE_GUIDE,
+    INTENT_QA,
+    INTENT_RECOMMEND,
+    INTENT_TICKET,
+)
+from ..state import ConversationState
+from .base import BaseNode
 
 logger = logging.getLogger(__name__)
 
+SKIP_INTENTS = {
+    INTENT_QA,
+    INTENT_DOCUMENT_ANALYSIS,
+    INTENT_TICKET,
+    INTENT_PURCHASE_GUIDE,
+    INTENT_RECOMMEND,
+}
+
+DEFAULT_SYSTEM_PROMPT = (
+    "你是一个智能客服助手。根据用户问题和当前意图，选择合适的工具获取数据。"
+    "\n如果不需要调用工具，直接回答即可。"
+    "\n如果工具涉及当前用户的信息，必须基于系统已注入的执行上下文执行。"
+)
+
 
 class FunctionCallingNode(BaseNode):
-    """Function Calling节点 - 使用 llm.bind_tools 让AI主动选择和调用工具"""
+    """Let the LLM pick and invoke tools for the current business pack."""
 
-    def __init__(self, llm=None):
-        super().__init__(llm)
-        self.tools = all_tools
-        self.llm_with_tools = llm.bind_tools(self.tools) if llm else None
-        self.tool_map = {t.name: t for t in self.tools}
+    def __init__(self, llm=None, runtime=None):
+        super().__init__(llm=llm, runtime=runtime)
+        self.tools = []
+        self.tool_map = {}
+        self.llm_with_tools = None
+        self._refresh_tools()
+
+    def _refresh_tools(self, execution_context=None):
+        tools = []
+        if self.runtime is not None:
+            tools = self.runtime.get_langchain_tools(
+                "default",
+                execution_context=execution_context,
+            )
+        if not tools and self.runtime is None:
+            tools = list(all_tools)
+
+        self.tools = tools
+        self.tool_map = {tool.name: tool for tool in tools}
+        self.llm_with_tools = self.llm.bind_tools(tools) if self.llm and tools else None
+
+    def _get_system_prompt(self) -> str:
+        if self.runtime is None:
+            return DEFAULT_SYSTEM_PROMPT
+        return self.runtime.get_prompt("function_calling_system_prompt", DEFAULT_SYSTEM_PROMPT)
 
     def _build_messages(self, state: ConversationState) -> list:
-        """构建发送给 LLM 的消息列表"""
         user_id = state.get("user_id", "")
-        
+        business_id = state.get("business_id") or "default"
         system_message = (
-            "你是一个智能客服助手。根据用户的问题和意图，选择合适的工具来获取所需数据。\n"
-            "【意图与工具的对应关系】：\n"
-            "- 如果用户想要【个性化推荐】（根据我的浏览、猜我喜欢、有什么推荐），使用 get_personalized_recommendations 工具\n"
-            "- 如果用户想要【商品推荐】或【搜索商品】（推荐python、推荐java项目、找一个vue项目），使用 search_products 工具，keyword参数填入技术关键词（如python、java、vue）\n"
-            "- 如果用户想【查询订单】或【物流】，使用 query_order 或 get_logistics 工具\n"
-            "- 如果用户想【获取用户信息】，使用 get_user_info 工具\n"
-            "- 如果用户想【检查库存】或【计算价格】，使用 check_inventory 或 calculate_price 工具\n"
-            "- 其他情况如果不需要调用工具，直接回复即可\n"
-            f"当前用户ID: {user_id} (如果需要调用工具且需要用户ID，请使用此ID)"
+            f"{self._get_system_prompt()}"
+            f"\n当前业务包: {business_id}"
+            f"\n当前用户ID: {user_id}。如果工具需要 user_id，优先使用系统上下文。"
         )
 
         messages = [("system", system_message)]
-
-        # 添加最近的对话历史作为上下文
         for turn in state.get("conversation_history", [])[-3:]:
             messages.append(("human", turn.get("user", "")))
             messages.append(("assistant", turn.get("assistant", "")))
 
-        # 添加当前用户消息，附带意图信息
         intent = state.get("intent", "未知")
-        user_msg = f"[用户意图: {intent}] {state['user_message']}"
-        messages.append(("human", user_msg))
-
+        messages.append(("human", f"[用户意图: {intent}] {state['user_message']}"))
         return messages
 
     async def execute(self, state: ConversationState) -> ConversationState:
-        """执行Function Calling"""
-        # 不需要工具调用的意图，直接跳过
-        skip_intents = {"问答", "文档分析", "工单", "购买指导", "推荐"}
-        if state.get("intent") in skip_intents or state.get("confidence", 0) < 0.6:
+        self._refresh_tools(execution_context=state.get("execution_context"))
+
+        if state.get("intent") in SKIP_INTENTS or state.get("confidence", 0) < 0.6:
             state["tool_result"] = None
             state["tool_used"] = None
-            logger.info(f"⚡ 跳过工具调用 (意图: {state.get('intent')})")
+            logger.info("Skipping tool calling for intent=%s", state.get("intent"))
+            return state
+
+        if self.llm_with_tools is None:
+            state["tool_result"] = None
+            state["tool_used"] = None
             return state
 
         try:
-            # 构建消息并调用绑定了工具的 LLM
-            messages = self._build_messages(state)
-            response = await self.llm_with_tools.ainvoke(messages)
-
-            # 解析 tool_calls
-            if response.tool_calls:
-                tool_results = []
-                for tc in response.tool_calls:
-                    tool_name = tc["name"]
-                    tool_args = tc["args"]
-                    logger.info(f"调用工具: {tool_name}, 参数: {tool_args}")
-
-                    try:
-                        tool_fn = self.tool_map.get(tool_name)
-                        if tool_fn is None:
-                            logger.error(f"工具不存在: {tool_name}")
-                            tool_results.append({
-                                "tool": tool_name,
-                                "error": f"工具不存在: {tool_name}"
-                            })
-                            continue
-
-                        result = await tool_fn.ainvoke(tool_args)
-                        tool_results.append({
-                            "tool": tool_name,
-                            "result": result
-                        })
-                        if tool_name == "search_products":
-                            logger.info(f"🎯 搜索结果: {len(result.get('products', []))} 个商品")
-                            for p in result.get("products", [])[:3]:
-                                logger.info(f"   - {p.get('title', '')[:30]} | tech: {p.get('tech_stack', [])}")
-                        logger.info(f"工具调用成功: {tool_name}")
-                    except Exception as e:
-                        logger.error(f"工具调用失败: {tool_name}, 错误: {e}")
-                        tool_results.append({
-                            "tool": tool_name,
-                            "error": str(e)
-                        })
-
-                state["tool_result"] = tool_results
-                state["tool_used"] = ", ".join(
-                    tc["name"] for tc in response.tool_calls
-                )
-            else:
+            response = await self.llm_with_tools.ainvoke(self._build_messages(state))
+            if not response.tool_calls:
                 state["tool_result"] = None
                 state["tool_used"] = None
+                return state
 
-        except Exception as e:
-            logger.error(f"Function calling失败: {e}")
+            tool_results = []
+            for tool_call in response.tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["args"]
+                logger.info("Calling tool: %s args=%s", tool_name, tool_args)
+
+                tool_fn = self.tool_map.get(tool_name)
+                if tool_fn is None:
+                    tool_results.append({"tool": tool_name, "error": f"工具不存在: {tool_name}"})
+                    continue
+
+                try:
+                    result = await tool_fn.ainvoke(tool_args)
+                    tool_results.append({"tool": tool_name, "result": result})
+                    logger.info("Tool call succeeded: %s", tool_name)
+                except Exception as exc:
+                    logger.error("Tool call failed: %s error=%s", tool_name, exc)
+                    tool_results.append({"tool": tool_name, "error": str(exc)})
+
+            state["tool_result"] = tool_results
+            state["tool_used"] = ", ".join(tool_call["name"] for tool_call in response.tool_calls)
+        except Exception as exc:
+            logger.error("Function calling failed: %s", exc, exc_info=True)
             state["tool_result"] = None
             state["tool_used"] = None
 

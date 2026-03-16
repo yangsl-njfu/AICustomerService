@@ -1,6 +1,8 @@
 """
 SQLAlchemy数据模型
 """
+from pathlib import Path
+
 from sqlalchemy import Column, String, Integer, Text, Boolean, Enum, TIMESTAMP, BigInteger, ForeignKey, JSON, Index, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -152,6 +154,13 @@ class Attachment(Base):
     
     # 关系
     message = relationship("Message", back_populates="attachments")
+
+    @property
+    def file_id(self):
+        try:
+            return Path(self.file_path).stem
+        except Exception:
+            return None
 
 
 class Ticket(Base):

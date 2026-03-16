@@ -129,7 +129,33 @@ class OrderService:
             return None
         
         return self._order_to_dict(order)
-    
+
+    async def get_order_by_no(
+        self,
+        order_no: str,
+        user_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Get an order by business order number."""
+        query = select(Order).options(
+            joinedload(Order.buyer),
+            joinedload(Order.items).joinedload(OrderItem.product)
+        ).where(Order.order_no == order_no)
+
+        if user_id:
+            query = query.where(Order.buyer_id == user_id)
+
+        result = await self.db.execute(query)
+        order = result.unique().scalar_one_or_none()
+
+        if not order:
+            return None
+
+        data = self._order_to_dict(order)
+        if hasattr(order, "buyer") and order.buyer:
+            data["buyer_name"] = order.buyer.username
+            data["buyer_phone"] = getattr(order.buyer, "phone", "")
+        return data
+
     async def list_orders(
         self,
         user_id: Optional[str] = None,

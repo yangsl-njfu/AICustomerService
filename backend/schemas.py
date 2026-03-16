@@ -1,13 +1,13 @@
-"""
-Pydantic数据模式
-"""
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List, Dict, Any
+"""Pydantic schema definitions."""
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, EmailStr, Field
 
 
-# 枚举类型
 class UserRole(str, Enum):
     USER = "user"
     ADMIN = "admin"
@@ -34,14 +34,12 @@ class TicketPriority(str, Enum):
 
 
 class QuickActionType(str, Enum):
-    """快速操作类型"""
-    BUTTON = "button"      # 普通按钮
-    LINK = "link"          # 链接
-    FORM = "form"          # 表单
-    PRODUCT = "product"    # 商品卡片
+    BUTTON = "button"
+    LINK = "link"
+    FORM = "form"
+    PRODUCT = "product"
 
 
-# 用户相关模式
 class UserBase(BaseModel):
     username: str
     email: Optional[EmailStr] = None
@@ -57,7 +55,7 @@ class UserResponse(UserBase):
     created_at: datetime
     last_login: Optional[datetime] = None
     is_active: bool = True
-    
+
     class Config:
         from_attributes = True
 
@@ -78,7 +76,6 @@ class TokenRefresh(BaseModel):
     refresh_token: str
 
 
-# 会话相关模式
 class SessionCreate(BaseModel):
     title: Optional[str] = "新对话"
 
@@ -92,26 +89,35 @@ class SessionResponse(BaseModel):
     last_message_at: Optional[datetime]
     message_count: int = 0
     is_active: bool = True
-    
+
     class Config:
         from_attributes = True
 
 
-# 消息相关模式
 class AttachmentCreate(BaseModel):
     file_id: str
     file_name: str
     file_type: str
     file_size: int
     file_path: Optional[str] = None
-    extracted_text: Optional[str] = None  # 视觉LLM提取的文字
-    ocr_used: bool = False  # 是否使用了OCR
-    image_intent: Optional[str] = None  # 图片意图（商品咨询/订单查询/售后服务/工单/文档分析/其他）
-    image_description: Optional[str] = None  # 图片描述
+    extracted_text: Optional[str] = None
+    ocr_used: bool = False
+    image_intent: Optional[str] = None
+    image_description: Optional[str] = None
+
+
+class MessageAttachmentInput(BaseModel):
+    file_id: str
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+    extracted_text: Optional[str] = None
+    ocr_used: bool = False
+    image_intent: Optional[str] = None
+    image_description: Optional[str] = None
 
 
 class QuickAction(BaseModel):
-    """快速操作按钮"""
     type: QuickActionType
     label: str
     action: str
@@ -123,13 +129,14 @@ class QuickAction(BaseModel):
 class MessageCreate(BaseModel):
     session_id: str
     message: str
-    attachments: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[MessageAttachmentInput]] = None
     purchase_flow: Optional[Dict[str, Any]] = None
     aftersales_flow: Optional[Dict[str, Any]] = None
 
 
 class AttachmentResponse(BaseModel):
     id: str
+    file_id: Optional[str] = None
     file_name: str
     file_type: str
     file_size: int
@@ -160,11 +167,10 @@ class ConversationResponse(BaseModel):
     intent: Optional[str] = None
     ticket_id: Optional[str] = None
     processing_time: Optional[float] = None
-    quick_actions: Optional[List[QuickAction]] = None  # 新增快速操作按钮
-    recommended_products: Optional[List[str]] = None   # 推荐商品ID列表
+    quick_actions: Optional[List[QuickAction]] = None
+    recommended_products: Optional[List[str]] = None
 
 
-# 工单相关模式
 class TicketCreate(BaseModel):
     title: str
     description: str
@@ -192,7 +198,7 @@ class TicketResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     resolved_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
 
@@ -206,24 +212,22 @@ class TicketHistoryResponse(BaseModel):
     new_value: Optional[str]
     comment: Optional[str]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
-# 文件相关模式
 class FileUploadResponse(BaseModel):
     file_id: str
     file_name: str
     file_size: int
     file_type: str
-    file_path: str
     upload_url: str
-    extracted_text: Optional[str] = None  # OCR 提取的文字内容
-    ocr_used: bool = False                # 是否使用了 OCR
+    extracted_text: Optional[str] = None
+    ocr_used: bool = False
+    analysis_pending: bool = False
 
 
-# 知识库相关模式
 class KnowledgeDocumentCreate(BaseModel):
     title: str
     content: str
@@ -243,12 +247,11 @@ class KnowledgeDocumentResponse(BaseModel):
     created_by: str
     status: str = "active"
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
-# 系统配置相关模式
 class SystemConfigUpdate(BaseModel):
     llm_temperature: Optional[float] = None
     llm_max_tokens: Optional[int] = None
@@ -260,12 +263,11 @@ class SystemConfigResponse(BaseModel):
     config_value: str
     description: Optional[str]
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
-# 管理后台相关模式
 class SystemStatsResponse(BaseModel):
     total_users: int
     total_sessions: int
@@ -284,7 +286,6 @@ class ConversationSearchParams(BaseModel):
     offset: int = 0
 
 
-# 错误响应模式
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None

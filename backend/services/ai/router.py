@@ -1,52 +1,41 @@
-"""
-路由决策
-"""
+"""Workflow route resolution."""
+from __future__ import annotations
+
+from .constants import DEFAULT_INTENT_HANDLER_MAP, INTENT_AFTERSALES, INTENT_RECOMMEND
 from .state import ConversationState
 
 
 class Router:
-    """路由决策器"""
+    """Route workflow execution based on intent and tool usage."""
+
+    def __init__(self, runtime=None):
+        self.runtime = runtime
 
     def route_after_function_calling(self, state: ConversationState) -> str:
-        """Function Calling后的路由决策"""
         intent = state.get("intent")
         tool_used = state.get("tool_used")
 
-        # "推荐"意图已在 workflow 层直接走 Agent，不经过此路由
-        # 但作为兜底，如果意外到达这里也能正确路由
-        if intent == "推荐":
+        if intent == INTENT_RECOMMEND:
             return "topic_advisor"
 
-        # 售后服务 - 触发售后流程
-        if intent == "售后服务":
+        if intent == INTENT_AFTERSALES:
             return "aftersales_flow"
 
-        # 如果调用了工具，根据工具类型路由
         if tool_used:
             if "query_order" in tool_used or "get_logistics" in tool_used:
                 return "order_query"
-            elif "search_products" in tool_used:
+            if "search_products" in tool_used:
                 return "product_inquiry"
-            elif "check_inventory" in tool_used or "calculate_price" in tool_used:
+            if "check_inventory" in tool_used or "calculate_price" in tool_used:
                 return "purchase_guide"
 
-        # 否则根据意图路由
         return self.route_by_intent(state)
 
     def route_by_intent(self, state: ConversationState) -> str:
-        """根据意图路由"""
         if state.get("confidence", 0) < 0.6:
             return "clarify"
 
-        intent_map = {
-            "问答": "qa_flow",
-            "工单": "ticket_flow",
-            "产品咨询": "product_flow",
-            "文档分析": "document_analysis",
-            "商品咨询": "product_inquiry",
-            "购买指导": "purchase_guide",
-            "订单查询": "order_query",
-            "售后服务": "aftersales_flow",
-            "推荐": "topic_advisor",
-        }
-        return intent_map.get(state.get("intent"), "clarify")
+        if self.runtime is not None:
+            return self.runtime.get_handler_for_intent(state.get("intent"))
+
+        return DEFAULT_INTENT_HANDLER_MAP.get(state.get("intent"), "clarify")

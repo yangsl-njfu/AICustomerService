@@ -1,326 +1,279 @@
 <template>
-  <div class="cart-page">
+  <div class="cart-page page-shell container">
     <div class="page-header">
-      <h1>购物车</h1>
-      <p v-if="!loading && items.length > 0">共 {{ totalItems }} 件商品</p>
+      <h1 class="page-title">购物车</h1>
+      <span class="item-count">{{ totalItems }} 件商品</span>
     </div>
 
-    <div v-if="loading" class="loading-state">
-      <div class="spinner"></div>
-      <p>加载中...</p>
-    </div>
-    
-    <div v-else-if="items.length === 0" class="empty-state">
-      <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="9" cy="21" r="1"></circle>
-        <circle cx="20" cy="21" r="1"></circle>
-        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-      </svg>
-      <h3>购物车是空的</h3>
-      <p>快去挑选心仪的商品吧</p>
-      <button class="browse-btn" @click="$router.push('/products')">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          <polyline points="9 22 9 12 15 12 15 22"></polyline>
-        </svg>
-        去逛逛
-      </button>
-    </div>
+    <section v-if="loading" class="state-card section-card">
+      <div class="loader"></div>
+      <strong>正在同步购物车</strong>
+      <p>马上就好，商品摘要与价格会一起更新。</p>
+    </section>
+
+    <section v-else-if="items.length === 0" class="state-card section-card">
+      <div class="empty-illustration">
+        <el-icon><ShoppingCart /></el-icon>
+      </div>
+      <strong>购物车还是空的</strong>
+      <p>先去商品中心挑选项目，再回来完成结算。</p>
+      <button class="accent-button" type="button" @click="router.push('/products')">去逛商品</button>
+    </section>
 
     <div v-else class="cart-content">
-      <div class="cart-items">
-        <div v-for="item in items" :key="item.id" class="cart-item">
-          <div class="item-image">
-            <img :src="item.product?.cover_image || '/placeholder.png'" :alt="item.product?.title" />
+      <div class="cart-list">
+        <article v-for="item in items" :key="item.id" class="cart-item">
+          <div class="item-media">
+            <img
+              :src="resolveProductImage(item.product?.cover_image, item.product?.title)"
+              :alt="item.product?.title"
+              @error="(event) => handleImageFallback(event, item.product?.title)"
+            />
           </div>
-          
-          <div class="item-details">
-            <h3 class="item-title">{{ item.product?.title }}</h3>
-            <p class="item-price">¥{{ (item.product?.price / 100).toFixed(2) }}</p>
-            <div class="item-meta">
-              <span class="difficulty" :class="`difficulty-${item.product?.difficulty}`">
-                {{ getDifficultyText(item.product?.difficulty) }}
-              </span>
+
+          <div class="item-body">
+            <div class="item-main">
+              <div class="item-info">
+                <h3 class="item-title" @click="router.push(`/products/${item.product_id}`)">
+                  {{ item.product?.title }}
+                </h3>
+                <div class="item-tags">
+                  <span>{{ getDifficultyText(item.product?.difficulty) }}</span>
+                  <span v-if="item.product?.tech_stack?.length">
+                    {{ item.product.tech_stack.slice(0, 2).join(' · ') }}
+                  </span>
+                </div>
+              </div>
+              <div class="item-price-block">
+                <strong class="item-total-price">
+                  {{ formatCents((item.product?.price || 0) * item.quantity) }}
+                </strong>
+                <span class="item-unit-price">
+                  {{ formatCents(item.product?.price || 0) }} / 件
+                </span>
+              </div>
             </div>
-          </div>
-          
-          <div class="item-actions">
-            <div class="quantity-control">
-              <button 
-                class="qty-btn" 
-                :disabled="item.quantity <= 1"
-                @click="updateQuantity(item.product_id, item.quantity - 1)"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
+
+            <div class="item-actions-row">
+              <div class="quantity-control">
+                <button 
+                  type="button" 
+                  :disabled="item.quantity <= 1 || loading" 
+                  @click="updateQuantity(item.product_id, item.quantity - 1)"
+                >
+                  <el-icon><Minus /></el-icon>
+                </button>
+                <input type="text" readonly :value="item.quantity" />
+                <button 
+                  type="button" 
+                  :disabled="loading" 
+                  @click="updateQuantity(item.product_id, item.quantity + 1)"
+                >
+                  <el-icon><Plus /></el-icon>
+                </button>
+              </div>
+              
+              <button class="remove-btn" type="button" @click="removeItem(item.product_id)">
+                移除
               </button>
-              <span class="qty-value">{{ item.quantity }}</span>
-              <button 
-                class="qty-btn" 
-                @click="updateQuantity(item.product_id, item.quantity + 1)"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-              </button>
             </div>
-            
-            <div class="item-subtotal">
-              ¥{{ ((item.product?.price || 0) / 100 * item.quantity).toFixed(2) }}
-            </div>
-            
-            <button class="remove-btn" @click="removeItem(item.product_id)">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
           </div>
-        </div>
+        </article>
       </div>
 
-      <div class="cart-summary">
-        <h3>订单摘要</h3>
-        
-        <div class="summary-details">
-          <div class="summary-row">
-            <span>商品件数</span>
-            <span>{{ totalItems }} 件</span>
+      <aside class="cart-sidebar">
+        <div class="summary-card">
+          <h2>结算摘要</h2>
+          
+          <div class="summary-list">
+            <div class="summary-item">
+              <span>商品总数</span>
+              <span>{{ totalItems }}</span>
+            </div>
+            <div class="summary-item">
+              <span>商品总额</span>
+              <span>{{ formatCents(totalAmount) }}</span>
+            </div>
+            <div class="summary-item highlight">
+              <span>应付金额</span>
+              <strong>{{ formatCents(totalAmount) }}</strong>
+            </div>
           </div>
-          <div class="summary-row">
-            <span>商品总价</span>
-            <span>¥{{ (totalAmount / 100).toFixed(2) }}</span>
+
+          <div class="summary-actions">
+            <button 
+              class="checkout-btn" 
+              type="button" 
+              :disabled="busy" 
+              @click="handleCheckout"
+            >
+              {{ checkoutPending ? '正在创建订单...' : '立即结算' }}
+            </button>
+            <button 
+              class="clear-btn" 
+              type="button" 
+              :disabled="busy" 
+              @click="handleClearCart"
+            >
+              清空购物车
+            </button>
+          </div>
+          
+          <div class="summary-footer">
+            <p><el-icon><ChatDotRound /></el-icon> 支持 AI 助手咨询</p>
+            <p><el-icon><Document /></el-icon> 购买后自动创建订单</p>
           </div>
         </div>
-        
-        <div class="summary-total">
-          <span>总计</span>
-          <span class="total-amount">¥{{ (totalAmount / 100).toFixed(2) }}</span>
-        </div>
-        
-        <button class="checkout-btn" @click="handleCheckout">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-            <line x1="1" y1="10" x2="23" y2="10"></line>
-          </svg>
-          去结算
-        </button>
-        
-        <button class="clear-btn" @click="handleClearCart">
-          清空购物车
-        </button>
-      </div>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Minus, Plus } from '@element-plus/icons-vue'
 import { useCartStore } from '@/stores/cart'
 import { useOrderStore } from '@/stores/order'
-import { storeToRefs } from 'pinia'
+import { handleImageFallback, resolveProductImage } from '@/utils/image'
 
 const router = useRouter()
 const cartStore = useCartStore()
 const orderStore = useOrderStore()
 const { items, loading, totalAmount, totalItems } = storeToRefs(cartStore)
 
+const checkoutPending = ref(false)
+
+const busy = computed(() => loading.value || checkoutPending.value)
+
 onMounted(() => {
   cartStore.fetchCart()
 })
 
-function getDifficultyText(difficulty: string | undefined): string {
+function formatCents(value: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2
+  }).format((value || 0) / 100)
+}
+
+function getDifficultyText(difficulty?: string) {
   const map: Record<string, string> = {
-    easy: '简单',
-    medium: '中等',
-    hard: '困难'
+    easy: '轻量入门',
+    medium: '标准进阶',
+    hard: '高阶项目'
   }
-  return map[difficulty || ''] || difficulty || ''
+
+  return map[difficulty || ''] || '项目方案'
 }
 
 async function updateQuantity(productId: string, quantity: number) {
   try {
     await cartStore.updateQuantity(productId, quantity)
   } catch (error) {
-    alert('更新数量失败，请重试')
+    console.error('Failed to update cart quantity', error)
+    ElMessage.error('更新数量失败，请稍后重试')
   }
 }
 
 async function removeItem(productId: string) {
-  if (confirm('确定要删除这个商品吗？')) {
-    try {
-      await cartStore.removeFromCart(productId)
-    } catch (error) {
-      alert('删除失败，请重试')
+  try {
+    await ElMessageBox.confirm('确定要从购物车移除这个项目吗？', '移除商品', {
+      confirmButtonText: '移除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    await cartStore.removeFromCart(productId)
+    ElMessage.success('商品已移除')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('Failed to remove item from cart', error)
+      ElMessage.error('移除失败，请稍后重试')
     }
   }
 }
 
 async function handleClearCart() {
-  if (confirm('确定要清空购物车吗？')) {
-    try {
-      await cartStore.clearCart()
-    } catch (error) {
-      alert('清空失败，请重试')
+  try {
+    await ElMessageBox.confirm('确定清空购物车吗？此操作不会删除订单记录。', '清空购物车', {
+      confirmButtonText: '清空',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    await cartStore.clearCart()
+    ElMessage.success('购物车已清空')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('Failed to clear cart', error)
+      ElMessage.error('清空失败，请稍后重试')
     }
   }
 }
 
 async function handleCheckout() {
-  if (items.value.length === 0) {
-    alert('购物车是空的')
+  if (!items.value.length) {
+    ElMessage.warning('购物车为空，先添加商品再结算')
     return
   }
 
+  checkoutPending.value = true
+
   try {
-    loading.value = true
-    
-    // 获取所有商品ID
-    const productIds = items.value.map(item => item.product_id)
-    
-    console.log('准备创建订单，商品ID:', productIds)
-    
-    // 创建订单（后端会自动清空购物车）
-    const order = await orderStore.createOrder(productIds)
-    
-    console.log('订单创建成功:', order)
-    
-    // 跳转到订单页面
-    alert(`订单创建成功！订单号：${order.order_no}`)
-    
-    // 刷新购物车数据
+    const order = await orderStore.createOrder(items.value.map(item => item.product_id))
     await cartStore.fetchCart()
-    
+    ElMessage.success(`订单创建成功：${order.order_no}`)
     router.push('/orders')
-    
   } catch (error: any) {
-    console.error('结算失败:', error)
-    const errorMsg = error.response?.data?.detail || error.message || '结算失败，请重试'
-    alert(errorMsg)
+    console.error('Failed to create order', error)
+    ElMessage.error(error.response?.data?.detail || error.message || '结算失败，请稍后重试')
   } finally {
-    loading.value = false
+    checkoutPending.value = false
   }
 }
 </script>
 
 <style scoped>
 .cart-page {
-  min-height: 100%;
-  background: var(--bg);
-  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .page-header {
-  margin-bottom: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 24px 0 8px;
 }
 
-.page-header h1 {
+.page-title {
   font-size: 28px;
   font-weight: 700;
   color: var(--text);
-  margin: 0 0 8px 0;
-}
-
-.page-header p {
-  color: var(--text-secondary);
-  font-size: 15px;
   margin: 0;
 }
 
-/* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  gap: 16px;
-}
-
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid var(--border-light);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-state p {
-  color: var(--text-secondary);
-  font-size: 16px;
-  font-weight: 500;
-}
-
-/* Empty State */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  gap: 20px;
-  background: var(--surface);
-  border-radius: 16px;
-  border: 1px solid var(--border);
-}
-
-.empty-state svg {
+.item-count {
+  font-size: 14px;
   color: var(--text-muted);
-  opacity: 0.5;
 }
 
-.empty-state h3 {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0;
-}
-
-.empty-state p {
-  color: var(--text-secondary);
-  font-size: 15px;
-  margin: 0;
-}
-
-.browse-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 28px;
-  background: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 24px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 8px;
-}
-
-.browse-btn:hover {
-  background: var(--primary-dark);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
-}
-
-/* Cart Content */
 .cart-content {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 24px;
-  align-items: flex-start;
+  align-items: start;
 }
 
-.cart-items {
-  flex: 1;
+.cart-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -328,32 +281,51 @@ async function handleCheckout() {
 
 .cart-item {
   display: flex;
-  align-items: center;
   gap: 20px;
   padding: 20px;
-  background: var(--surface);
+  background: white;
+  border-radius: 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 
 .cart-item:hover {
-  box-shadow: var(--shadow);
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-sm);
 }
 
-.item-image {
+.item-media {
+  width: 100px;
+  height: 100px;
   flex-shrink: 0;
-}
-
-.item-image img {
-  width: 120px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 8px;
+  border-radius: 12px;
+  overflow: hidden;
   border: 1px solid var(--border-light);
+  background: #F8FAFC;
 }
 
-.item-details {
+.item-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.item-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.item-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.item-info {
   flex: 1;
   min-width: 0;
 }
@@ -362,247 +334,266 @@ async function handleCheckout() {
   font-size: 16px;
   font-weight: 600;
   color: var(--text);
-  margin: 0 0 8px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  margin: 0 0 8px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: color 0.2s;
 }
 
-.item-price {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--danger);
-  margin: 0 0 8px 0;
+.item-title:hover {
+  color: var(--primary);
 }
 
-.item-meta {
+.item-tags {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.difficulty {
-  padding: 4px 10px;
-  border-radius: 12px;
+.item-tags span {
   font-size: 12px;
-  font-weight: 500;
+  color: var(--text-secondary);
+  background: #F1F5F9;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
-.difficulty-easy {
-  background: #e6f7ff;
-  color: #1890ff;
+.item-price-block {
+  text-align: right;
+  flex-shrink: 0;
 }
 
-.difficulty-medium {
-  background: #fff7e6;
-  color: #fa8c16;
+.item-total-price {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
 }
 
-.difficulty-hard {
-  background: #fff1f0;
-  color: #ff4d4f;
+.item-unit-price {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
-.item-actions {
+.item-actions-row {
   display: flex;
   align-items: center;
-  gap: 20px;
+  justify-content: space-between;
 }
 
 .quantity-control {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: var(--bg-light);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.qty-btn {
-  width: 28px;
-  height: 28px;
+.quantity-control button {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  background: var(--surface);
-  border-radius: 50%;
+  background: white;
   cursor: pointer;
-  transition: all 0.3s ease;
   color: var(--text-secondary);
+  transition: all 0.2s;
 }
 
-.qty-btn:hover:not(:disabled) {
-  background: var(--primary);
-  color: white;
-  transform: scale(1.1);
+.quantity-control button:hover:not(:disabled) {
+  background: #F8FAFC;
+  color: var(--primary);
 }
 
-.qty-btn:disabled {
-  opacity: 0.4;
+.quantity-control button:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.qty-value {
-  min-width: 32px;
+.quantity-control input {
+  width: 40px;
+  height: 32px;
+  border: none;
+  border-left: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
   text-align: center;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  font-size: 15px;
-}
-
-.item-subtotal {
-  min-width: 100px;
-  text-align: right;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--danger);
+  outline: none;
 }
 
 .remove-btn {
-  padding: 8px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
+  font-size: 13px;
   color: var(--text-muted);
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
 }
 
 .remove-btn:hover {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: white;
+  color: var(--danger);
+  text-decoration: underline;
 }
 
-/* Cart Summary */
-.cart-summary {
-  width: 360px;
-  flex-shrink: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 24px;
-  border-radius: 12px;
+.cart-sidebar {
   position: sticky;
   top: 24px;
 }
 
-.cart-summary h3 {
+.summary-card {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.summary-card h2 {
   font-size: 18px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0 0 20px 0;
-}
-
-.summary-details {
-  margin-bottom: 16px;
-}
-
-.summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.summary-row:not(:last-child) {
-  border-bottom: 1px solid var(--border-light);
-}
-
-.summary-total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 0;
-  border-top: 2px solid var(--border);
-  margin-bottom: 20px;
-}
-
-.summary-total span:first-child {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.total-amount {
-  font-size: 24px;
   font-weight: 700;
-  color: var(--danger);
+  margin: 0 0 20px;
+  color: var(--text);
+}
+
+.summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.summary-item.highlight {
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.summary-item.highlight strong {
+  font-size: 20px;
+  color: var(--primary);
+}
+
+.summary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .checkout-btn {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px;
+  height: 44px;
   background: var(--primary);
   color: white;
   border: none;
-  border-radius: 24px;
-  font-size: 16px;
+  border-radius: 10px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  margin-bottom: 12px;
+  transition: background 0.2s;
 }
 
-.checkout-btn:hover {
+.checkout-btn:hover:not(:disabled) {
   background: var(--primary-dark);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
+}
+
+.checkout-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .clear-btn {
   width: 100%;
-  padding: 12px;
-  background: transparent;
+  height: 40px;
+  background: white;
   color: var(--text-secondary);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 10px;
   font-size: 14px;
-  font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s;
 }
 
-.clear-btn:hover {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: white;
+.clear-btn:hover:not(:disabled) {
+  background: #F8FAFC;
+  border-color: var(--text-muted);
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .cart-page {
-    padding: 16px;
-  }
+.summary-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
+.summary-footer p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.state-card {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+}
+
+.empty-illustration {
+  width: 80px;
+  height: 80px;
+  background: #F1F5F9;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
   .cart-content {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
-
-  .cart-summary {
-    width: 100%;
+  
+  .cart-sidebar {
     position: static;
   }
+}
 
-  .cart-item {
+@media (max-width: 600px) {
+  .item-main {
     flex-direction: column;
-    align-items: flex-start;
+    gap: 8px;
   }
-
-  .item-actions {
-    width: 100%;
-    justify-content: space-between;
+  
+  .item-price-block {
+    text-align: left;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
   }
 }
 </style>

@@ -38,6 +38,14 @@ _base_mod = importlib.util.module_from_spec(_base_spec)
 sys.modules["backend.services.ai.nodes.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
+# Load constants.py
+_constants_path = os.path.join(_backend_dir, "services", "ai", "constants.py")
+_constants_spec = importlib.util.spec_from_file_location("backend.services.ai.constants", _constants_path)
+_constants_mod = importlib.util.module_from_spec(_constants_spec)
+_constants_mod.__package__ = "backend.services.ai"
+sys.modules["backend.services.ai.constants"] = _constants_mod
+_constants_spec.loader.exec_module(_constants_mod)
+
 # Create mock tools that mimic LangChain @tool decorated functions
 def _make_mock_tool(name):
     t = MagicMock()
@@ -209,6 +217,7 @@ class TestToolCallParsing:
         mock_tool.ainvoke = AsyncMock(return_value={"success": True, "order_no": "ORD123"})
         mock_tool.name = "query_order"
         node.tool_map["query_order"] = mock_tool
+        node._refresh_tools = MagicMock()
 
         state = _make_state(intent="订单查询")
         result = await node.execute(state)
@@ -291,6 +300,7 @@ class TestErrorHandling:
         mock_tool.ainvoke = AsyncMock(side_effect=Exception("DB connection failed"))
         mock_tool.name = "query_order"
         node.tool_map["query_order"] = mock_tool
+        node._refresh_tools = MagicMock()
 
         state = _make_state(intent="订单查询")
         result = await node.execute(state)

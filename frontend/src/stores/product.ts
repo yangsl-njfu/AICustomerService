@@ -67,10 +67,27 @@ export interface ProductSearchParams {
 
 export interface ProductListResponse {
   products: Product[]
+  items?: Product[]
   total: number
   page: number
   page_size: number
   total_pages: number
+}
+
+type ProductListAPIResponse = Partial<ProductListResponse> & {
+  products?: Product[]
+  items?: Product[]
+}
+
+type CategoryAPIResponse = Category[] | {
+  categories?: Category[]
+}
+
+const DEFAULT_SEARCH_PARAMS: ProductSearchParams = {
+  page: 1,
+  page_size: 20,
+  sort_by: 'created_at',
+  order: 'desc'
 }
 
 export const useProductStore = defineStore('product', () => {
@@ -78,12 +95,7 @@ export const useProductStore = defineStore('product', () => {
   const currentProduct = ref<Product | null>(null)
   const categories = ref<Category[]>([])
   const loading = ref(false)
-  const searchParams = ref<ProductSearchParams>({
-    page: 1,
-    page_size: 20,
-    sort_by: 'created_at',
-    order: 'desc'
-  })
+  const searchParams = ref<ProductSearchParams>({ ...DEFAULT_SEARCH_PARAMS })
   const totalPages = ref(0)
   const total = ref(0)
 
@@ -91,22 +103,48 @@ export const useProductStore = defineStore('product', () => {
     return searchParams.value.page! < totalPages.value
   })
 
+  function normalizeSearchParams(params?: ProductSearchParams): ProductSearchParams {
+    const merged = {
+      ...DEFAULT_SEARCH_PARAMS,
+      ...searchParams.value,
+      ...(params || {})
+    }
+
+    return Object.fromEntries(
+      Object.entries(merged).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    ) as ProductSearchParams
+  }
+
   async function fetchProducts(params?: ProductSearchParams) {
     loading.value = true
     try {
-      if (params) {
-        searchParams.value = { ...searchParams.value, ...params }
-      }
+      searchParams.value = normalizeSearchParams(params)
       
-      const response = await apiClient.get<ProductListResponse>('/products', {
+      const response = await apiClient.get<ProductListAPIResponse>('/products', {
         params: searchParams.value
       })
-      
-      products.value = response.products
-      total.value = response.total
-      totalPages.value = response.total_pages
-      
-      return response
+
+      const normalizedProducts = response.products ?? response.items ?? []
+      const normalizedPage = response.page ?? searchParams.value.page ?? 1
+      const normalizedPageSize = response.page_size ?? searchParams.value.page_size ?? 20
+      const normalizedTotal = response.total ?? normalizedProducts.length
+      const normalizedTotalPages =
+        response.total_pages ?? Math.max(1, Math.ceil(normalizedTotal / normalizedPageSize))
+
+      const normalizedResponse: ProductListResponse = {
+        products: normalizedProducts,
+        items: normalizedProducts,
+        total: normalizedTotal,
+        page: normalizedPage,
+        page_size: normalizedPageSize,
+        total_pages: normalizedTotalPages
+      }
+
+      products.value = normalizedResponse.products
+      total.value = normalizedResponse.total
+      totalPages.value = normalizedResponse.total_pages
+
+      return normalizedResponse
     } catch (error) {
       console.error('获取商品列表失败:', error)
       throw error
@@ -139,7 +177,8 @@ export const useProductStore = defineStore('product', () => {
 
   async function fetchCategories() {
     try {
-      categories.value = await apiClient.get<Category[]>('/products/categories')
+      const response = await apiClient.get<CategoryAPIResponse>('/products/categories')
+      categories.value = Array.isArray(response) ? response : response.categories ?? []
       return categories.value
     } catch (error) {
       console.error('获取分类列表失败:', error)
@@ -208,12 +247,7 @@ export const useProductStore = defineStore('product', () => {
   }
 
   function resetSearch() {
-    searchParams.value = {
-      page: 1,
-      page_size: 20,
-      sort_by: 'created_at',
-      order: 'desc'
-    }
+    searchParams.value = { ...DEFAULT_SEARCH_PARAMS }
   }
 
   function nextPage() {

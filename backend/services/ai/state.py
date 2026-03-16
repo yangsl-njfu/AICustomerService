@@ -1,53 +1,50 @@
 """
-对话状态定义
+Shared conversation state for workflow execution.
 """
-from typing import TypedDict, List, Dict, Optional, Any
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, TypedDict
 
 
 class ConversationState(TypedDict):
-    """对话状态"""
-    # 输入
+    # Request
     user_message: str
     user_id: str
     session_id: str
+    business_id: Optional[str]
+    execution_context: Optional[Dict[str, Any]]
     attachments: Optional[List[Dict]]
-    
-    # 上下文
+
+    # Context
     conversation_history: List[Dict[str, str]]
-    user_profile: Dict
-    
-    # 处理过程
+    user_profile: Dict[str, Any]
+
+    # Processing
     intent: Optional[str]
     confidence: Optional[float]
     retrieved_docs: Optional[List[Dict]]
-    tool_result: Optional[Any]  # Function Calling结果
-    tool_used: Optional[str]    # 使用的工具名称
-    
-    # 输出
+    tool_result: Optional[Any]
+    tool_used: Optional[str]
+
+    # Output
     response: str
     sources: Optional[List[Dict]]
     ticket_id: Optional[str]
     recommended_products: Optional[List[str]]
-    quick_actions: Optional[List[Dict]]  # 快速操作按钮
-    
-    # 多轮对话意图追踪
+    quick_actions: Optional[List[Dict]]
+
+    # Intent tracking
     intent_history: Optional[List[Dict[str, Any]]]
-    # 格式: [{"intent": "商品咨询", "confidence": 0.9, "turn": 3, "timestamp": "..."}, ...]
-
-    # 对话摘要
     conversation_summary: Optional[str]
-    # 格式: 纯文本摘要字符串
 
-    # 元数据
+    # Metadata
     timestamp: str
     processing_time: Optional[float]
-    
-    # 购买流程状态
-    purchase_flow: Optional[Dict[str, Any]]
 
-    # 售后流程状态
+    # Flow states
+    purchase_flow: Optional[Dict[str, Any]]
     aftersales_flow: Optional[Dict[str, Any]]
 
-    # 智能选题 Agent 状态
-    topic_advisor_projects: Optional[List[Dict]]       # Agent 搜索到的项目
-    topic_advisor_tool_results: Optional[List[Dict]]   # Agent 工具调用日志
+    # Agent state
+    topic_advisor_projects: Optional[List[Dict]]
+    topic_advisor_tool_results: Optional[List[Dict]]

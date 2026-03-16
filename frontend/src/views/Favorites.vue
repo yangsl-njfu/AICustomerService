@@ -1,48 +1,75 @@
 <template>
-  <div class="favorites-container">
-    <h2>我的收藏</h2>
-    
-    <div v-loading="loading" class="favorites-grid">
-      <el-empty v-if="favorites.length === 0" description="暂无收藏" />
-      
-      <div v-for="item in favorites" :key="item.favorite_id" class="favorite-card">
-        <div class="product-image" @click="goToDetail(item.product_id)">
-          <img :src="item.cover_image" :alt="item.title" />
+  <div class="favorites-page page-shell">
+    <section v-if="loading" class="state-card section-card">
+      <div class="loader"></div>
+      <strong>正在读取收藏列表</strong>
+      <p>稍后就会展示你的高意向项目。</p>
+    </section>
+
+    <section v-else-if="favorites.length === 0" class="state-card section-card">
+      <div class="empty-illustration">
+        <el-icon><Star /></el-icon>
+      </div>
+      <strong>还没有收藏项目</strong>
+      <p>先去商品中心看看，把感兴趣的项目保存下来。</p>
+      <button class="accent-button" type="button" @click="router.push('/products')">去看商品</button>
+    </section>
+
+    <section v-else class="favorites-grid">
+      <article v-for="item in favorites" :key="item.favorite_id" class="favorite-card section-card">
+        <div class="card-media" @click="goToDetail(item.product_id)">
+          <img
+            :src="resolveProductImage(item.cover_image, item.title)"
+            :alt="item.title"
+            @error="(event) => handleImageFallback(event, item.title)"
+          />
         </div>
-        <div class="product-info">
-          <h3 @click="goToDetail(item.product_id)">{{ item.title }}</h3>
-          <p class="description">{{ item.description }}</p>
-          <div class="footer">
-            <span class="price">¥{{ item.price.toFixed(2) }}</span>
-            <div class="actions">
-              <el-button type="primary" size="small" @click="addToCart(item.product_id)">
-                加入购物车
-              </el-button>
-              <el-button size="small" @click="removeFavorite(item.product_id)">
-                取消收藏
-              </el-button>
-            </div>
+
+        <div class="card-body">
+          <div class="card-topline">
+            <span class="eyebrow">Saved Project</span>
+            <strong>{{ formatPrice(item.price) }}</strong>
+          </div>
+
+          <h2 @click="goToDetail(item.product_id)">{{ item.title }}</h2>
+          <p>{{ getPreview(item.description) }}</p>
+
+          <div class="card-actions">
+            <button class="accent-button compact-button" type="button" @click="addToCart(item.product_id)">
+              加入购物车
+            </button>
+            <button class="ghost-button compact-button" type="button" @click="removeFavorite(item.product_id)">
+              取消收藏
+            </button>
           </div>
         </div>
+      </article>
+    </section>
+
+    <section v-if="total > pageSize" class="pagination-card section-card">
+      <button class="ghost-button" type="button" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
+        上一页
+      </button>
+
+      <div class="page-indicator">
+        <strong>{{ currentPage }}</strong>
+        <span>共 {{ Math.ceil(total / pageSize) }} 页</span>
       </div>
-    </div>
-    
-    <el-pagination
-      v-if="total > pageSize"
-      v-model:current-page="currentPage"
-      :page-size="pageSize"
-      :total="total"
-      layout="prev, pager, next"
-      @current-change="fetchFavorites"
-    />
+
+      <button class="accent-button" type="button" :disabled="currentPage >= Math.ceil(total / pageSize)" @click="changePage(currentPage + 1)">
+        下一页
+      </button>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Star } from '@element-plus/icons-vue'
 import { apiClient } from '@/api/client'
+import { handleImageFallback, resolveProductImage } from '@/utils/image'
 
 const router = useRouter()
 
@@ -52,43 +79,25 @@ const currentPage = ref(1)
 const pageSize = ref(12)
 const total = ref(0)
 
-const fetchFavorites = async () => {
+onMounted(() => {
+  fetchFavorites()
+})
+
+async function fetchFavorites() {
   loading.value = true
+
   try {
-    console.log('[DEBUG] 开始请求收藏列表...')
-    const response = await apiClient.get('/favorites', {
+    const data: any = await apiClient.get('/favorites', {
       params: {
         page: currentPage.value,
         page_size: pageSize.value
       }
     })
-    console.log('[DEBUG] 收到响应:', response)
-    
-    // axios 返回的数据在 response.data 中，但如果 apiClient 已经处理过，可能直接在 response 中
-    const data = response.data || response
-    console.log('[DEBUG] 响应数据:', data)
-    
-    if (!data) {
-      console.error('[ERROR] 响应数据为空')
-      ElMessage.error('服务器返回数据为空')
-      favorites.value = []
-      total.value = 0
-      return
-    }
-    
-    if (!data.items) {
-      console.error('[ERROR] 响应数据中没有 items 字段:', data)
-      ElMessage.error('数据格式错误：缺少 items 字段')
-      favorites.value = []
-      total.value = 0
-      return
-    }
-    
+
     favorites.value = data.items || []
     total.value = data.total || 0
-    console.log('[DEBUG] 设置收藏列表成功，共', favorites.value.length, '条')
   } catch (error: any) {
-    console.error('[ERROR] 请求失败:', error)
+    console.error('Failed to fetch favorites', error)
     ElMessage.error(error.message || '获取收藏列表失败')
     favorites.value = []
     total.value = 0
@@ -97,140 +106,273 @@ const fetchFavorites = async () => {
   }
 }
 
-const goToDetail = (productId: string) => {
+function changePage(page: number) {
+  currentPage.value = page
+  fetchFavorites()
+}
+
+function getPreview(text = '') {
+  return text.length > 88 ? `${text.slice(0, 88)}...` : text || '适合加入收藏后反复比较、咨询和下单。'
+}
+
+function formatPrice(value: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2
+  }).format(value || 0)
+}
+
+function goToDetail(productId: string) {
   router.push(`/products/${productId}`)
 }
 
-const addToCart = async (productId: string) => {
+async function addToCart(productId: string) {
   try {
     await apiClient.post('/cart', { product_id: productId })
     ElMessage.success('已加入购物车')
   } catch (error: any) {
+    console.error('Failed to add favorite item to cart', error)
     ElMessage.error(error.message || '加入购物车失败')
   }
 }
 
-const removeFavorite = async (productId: string) => {
+async function removeFavorite(productId: string) {
   try {
-    await ElMessageBox.confirm('确认取消收藏？', '提示', {
+    await ElMessageBox.confirm('确认取消收藏这个项目吗？', '取消收藏', {
       confirmButtonText: '确认',
       cancelButtonText: '取消',
       type: 'warning'
     })
-    
+
     await apiClient.delete(`/favorites/${productId}`)
     ElMessage.success('已取消收藏')
     fetchFavorites()
   } catch (error: any) {
     if (error !== 'cancel') {
+      console.error('Failed to remove favorite', error)
       ElMessage.error(error.message || '取消收藏失败')
     }
   }
 }
-
-onMounted(() => {
-  fetchFavorites()
-})
 </script>
 
 <style scoped>
-.favorites-container {
-  padding: 20px;
+.favorites-page {
+  gap: 18px;
 }
 
-h2 {
-  margin-bottom: 20px;
-  color: var(--text);
+.favorites-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) 240px;
+  gap: 18px;
+  padding: 24px;
+}
+
+.hero-copy h1 {
+  margin: 14px 0 12px;
+  font-size: clamp(34px, 4vw, 56px);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+
+.hero-copy p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+.hero-side {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-stat {
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--border);
+}
+
+.hero-stat span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hero-stat strong {
+  display: block;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.state-card {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.loader {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 4px solid rgba(0, 113, 227, 0.12);
+  border-top-color: var(--primary);
+  animation: spin 0.9s linear infinite;
+}
+
+.empty-illustration {
+  width: 82px;
+  height: 82px;
+  border-radius: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--primary);
+}
+
+.empty-illustration :deep(.el-icon) {
+  font-size: 34px;
+}
+
+.state-card strong {
+  font-size: 24px;
+}
+
+.state-card p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.7;
 }
 
 .favorites-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
-  min-height: 400px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
 }
 
 .favorite-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
   overflow: hidden;
-  transition: all 0.3s ease;
 }
 
-.favorite-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.product-image {
-  width: 100%;
-  height: 200px;
+.card-media {
   overflow: hidden;
+  aspect-ratio: 1.18;
   cursor: pointer;
 }
 
-.product-image img {
+.card-media img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  transition: transform 0.32s ease;
 }
 
-.product-image:hover img {
-  transform: scale(1.05);
+.favorite-card:hover .card-media img {
+  transform: scale(1.04);
 }
 
-.product-info {
-  padding: 16px;
+.card-body {
+  padding: 20px;
 }
 
-.product-info h3 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
-  color: var(--text);
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.product-info h3:hover {
-  color: var(--accent);
-}
-
-.description {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.footer {
+.card-topline {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 12px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.price {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--accent);
+.card-topline strong {
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
-.actions {
+.card-body h2 {
+  margin: 16px 0 10px;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.05em;
+  cursor: pointer;
+}
+
+.card-body p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+.card-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 18px;
 }
 
-.el-pagination {
-  margin-top: 20px;
-  display: flex;
+.compact-button {
+  flex: 1;
   justify-content: center;
+}
+
+.pagination-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.page-indicator {
+  min-width: 140px;
+  text-align: center;
+}
+
+.page-indicator strong {
+  display: block;
+  font-size: 26px;
+}
+
+.page-indicator span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .favorites-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .favorites-hero,
+  .card-body,
+  .pagination-card {
+    padding: 18px;
+  }
+
+  .card-actions,
+  .pagination-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

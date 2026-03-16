@@ -73,8 +73,38 @@ class EcommerceAdapter(BusinessAdapter):
                 page_size=10
             )
             
-            orders = result.get("orders", [])
+            orders = result.get("items", [])
             return [self._normalize_order(order) for order in orders]
+
+    async def get_order_by_no(self, order_no: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Query a single order by order number."""
+        if self.api_base_url:
+            try:
+                params = {"order_no": order_no}
+                if user_id:
+                    params["user_id"] = user_id
+
+                response = await self.call_business_api(
+                    "/api/orders/detail",
+                    method="GET",
+                    params=params
+                )
+                if not response:
+                    return None
+
+                normalized = self._normalize_order(response)
+                normalized["buyer_name"] = response.get("buyer_name", "")
+                normalized["buyer_phone"] = response.get("buyer_phone", "")
+                return normalized
+            except Exception as e:
+                print(f"调用外部订单详情 API 失败: {e}")
+
+        from database.connection import get_db_context
+        from services.order_service import OrderService
+
+        async with get_db_context() as db:
+            order_service = OrderService(db)
+            return await order_service.get_order_by_no(order_no, user_id=user_id)
     
     async def search_products(self, keyword: str, filters: Optional[Dict] = None) -> List[Dict]:
         """搜索商品"""
@@ -109,6 +139,29 @@ class EcommerceAdapter(BusinessAdapter):
             
             products = result.get("products", [])
             return [self._normalize_product(product) for product in products]
+
+    async def get_personalized_recommendations(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get personalized recommendations for the current user."""
+        if self.api_base_url:
+            try:
+                response = await self.call_business_api(
+                    "/api/recommendations/personalized",
+                    method="GET",
+                    params={"user_id": user_id, "limit": limit}
+                )
+                return response.get("products", [])
+            except Exception as e:
+                print(f"调用外部推荐 API 失败: {e}")
+
+        from database.connection import get_db_context
+        from services.recommendation_service import RecommendationService
+
+        async with get_db_context() as db:
+            recommendation_service = RecommendationService(db)
+            return await recommendation_service.get_personalized_recommendations(
+                user_id=user_id,
+                limit=limit
+            )
     
     async def create_ticket(self, user_id: str, ticket_data: Dict) -> Dict:
         """创建工单"""

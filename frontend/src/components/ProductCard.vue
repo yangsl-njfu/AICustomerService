@@ -1,55 +1,59 @@
 <template>
-  <div class="product-card" @click="goToDetail">
-    <div class="product-image">
-      <img :src="product.cover_image || '/placeholder.png'" :alt="product.title" />
-      <div v-if="product.original_price" class="product-badge">
-        <span class="discount">特惠</span>
+  <article class="product-card" @click="goToDetail">
+    <div class="card-media">
+      <img
+        :src="resolveProductImage(product.cover_image, product.title)"
+        :alt="product.title"
+        @error="(event) => handleImageFallback(event, product.title)"
+      />
+
+      <div class="media-gradient"></div>
+
+      <div class="media-chips">
+        <span class="media-chip">{{ difficultyText }}</span>
+        <span class="media-chip subtle">{{ product.category?.name || '精选项目' }}</span>
       </div>
     </div>
-    
-    <div class="product-info">
-      <h3 class="product-title">{{ product.title }}</h3>
-      
-      <div class="product-meta">
-        <span class="difficulty" :class="`difficulty-${product.difficulty}`">
-          {{ difficultyText }}
-        </span>
-        <span v-if="product.tech_stack && product.tech_stack.length > 0" class="tech-stack">
-          {{ product.tech_stack.slice(0, 2).join(', ') }}
-          <span v-if="product.tech_stack.length > 2">...</span>
-        </span>
-      </div>
-      
-      <div class="product-stats">
-        <span class="rating">
-          <el-icon class="star"><Star /></el-icon>
+
+    <div class="card-body">
+      <div class="card-topline">
+        <span class="card-kicker">Curated Release</span>
+        <span class="rating-pill">
+          <el-icon><Star /></el-icon>
           {{ product.rating.toFixed(1) }}
         </span>
-        <span class="sales">销量 {{ product.sales_count }}</span>
       </div>
-      
-      <div class="product-footer">
-        <div class="price-section">
-          <span class="price">¥{{ product.price.toFixed(2) }}</span>
-          <span v-if="product.original_price" class="original-price">
-            ¥{{ product.original_price.toFixed(2) }}
-          </span>
+
+      <h3 class="card-title">{{ product.title }}</h3>
+      <p class="card-description">{{ previewDescription }}</p>
+
+      <div v-if="product.tech_stack?.length" class="tech-list">
+        <span v-for="tech in product.tech_stack.slice(0, 3)" :key="tech">{{ tech }}</span>
+      </div>
+
+      <div class="card-footer">
+        <div class="price-block">
+          <strong>{{ formatPrice(product.price) }}</strong>
+          <span v-if="product.original_price">{{ formatPrice(product.original_price) }}</span>
+          <small>已售 {{ product.sales_count }} · {{ product.review_count }} 条评价</small>
         </div>
-        
-        <button class="add-cart-btn" @click.stop="handleAddToCart">
+
+        <button class="card-action" type="button" @click.stop="handleAddToCart">
           加入购物车
         </button>
       </div>
     </div>
-  </div>
+  </article>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCartStore } from '@/stores/cart'
+import { ElMessage } from 'element-plus'
 import { Star } from '@element-plus/icons-vue'
+import { useCartStore } from '@/stores/cart'
 import type { Product } from '@/stores/product'
+import { handleImageFallback, resolveProductImage } from '@/utils/image'
 
 const props = defineProps<{
   product: Product
@@ -60,12 +64,26 @@ const cartStore = useCartStore()
 
 const difficultyText = computed(() => {
   const map: Record<string, string> = {
-    easy: '简单',
-    medium: '中等',
-    hard: '困难'
+    easy: '轻量入门',
+    medium: '标准进阶',
+    hard: '高阶项目'
   }
+
   return map[props.product.difficulty] || props.product.difficulty
 })
+
+const previewDescription = computed(() => {
+  const raw = props.product.description?.trim() || '适合需要快速完成方案展示、功能演示与交付说明的项目。'
+  return raw.length > 72 ? `${raw.slice(0, 72)}...` : raw
+})
+
+function formatPrice(value?: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2
+  }).format(value ?? 0)
+}
 
 function goToDetail() {
   router.push(`/products/${props.product.id}`)
@@ -74,195 +92,208 @@ function goToDetail() {
 async function handleAddToCart() {
   try {
     await cartStore.addToCart(props.product.id)
-    alert('已添加到购物车')
+    ElMessage.success('已加入购物车')
   } catch (error) {
-    alert('添加失败，请重试')
+    console.error('Failed to add item to cart', error)
+    ElMessage.error('加入购物车失败，请稍后重试')
   }
 }
 </script>
 
 <style scoped>
 .product-card {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: var(--surface);
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.82);
   box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease;
 }
 
 .product-card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(0, 113, 227, 0.16);
   box-shadow: var(--shadow);
-  border-color: rgba(37, 99, 235, 0.2);
 }
 
-.product-image {
+.card-media {
   position: relative;
-  width: 100%;
-  padding-top: 66.67%; /* 3:2 aspect ratio */
+  aspect-ratio: 1.16;
   overflow: hidden;
-  background: var(--bg-light);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.06), rgba(0, 113, 227, 0.1));
 }
 
-.product-image img {
-  position: absolute;
-  top: 0;
-  left: 0;
+.card-media img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  transition: transform 0.32s ease;
 }
 
-.product-card:hover .product-image img {
-  transform: scale(1.05);
+.product-card:hover .card-media img {
+  transform: scale(1.04);
 }
 
-.product-badge {
+.media-gradient {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 1;
+  inset: auto 0 0;
+  height: 48%;
+  background: linear-gradient(180deg, transparent 0%, rgba(10, 18, 34, 0.74) 100%);
 }
 
-.discount {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--primary);
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid rgba(37, 99, 235, 0.2);
-}
-
-.product-info {
-  padding: 16px;
+.media-chips {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
   display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.product-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  line-height: 1.5;
-  min-height: 45px;
-}
-
-.product-meta {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
   flex-wrap: wrap;
+  gap: 8px;
 }
 
-.difficulty {
-  padding: 4px 10px;
-  border-radius: 12px;
+.media-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  backdrop-filter: blur(10px);
 }
 
-.difficulty-easy {
-  background: #e0f2fe;
-  color: #0284c7;
+.media-chip.subtle {
+  background: rgba(10, 18, 34, 0.7);
+  color: #f8fbff;
 }
 
-.difficulty-medium {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-.difficulty-hard {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.tech-stack {
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding: 4px 10px;
-  background: var(--surface-2);
-  border-radius: 12px;
-}
-
-.product-stats {
+.card-body {
   display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-  font-size: 13px;
-  color: var(--text-secondary);
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
 }
 
-.rating {
+.card-topline {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-weight: 500;
-}
-
-.star {
-  font-size: 14px;
-  color: #f59e0b;
-}
-
-.sales {
-  font-weight: 500;
-}
-
-.product-footer {
-  display: flex;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.card-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.rating-pill {
+  display: inline-flex;
   align-items: center;
-  padding-top: 12px;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+
+.card-description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.tech-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tech-list span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.card-footer {
   margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--border-light);
 }
 
-.price-section {
+.price-block {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.price {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--danger);
+.price-block strong {
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
-.original-price {
-  font-size: 14px;
+.price-block span {
   color: var(--text-muted);
+  font-size: 13px;
   text-decoration: line-through;
 }
 
-.add-cart-btn {
-  padding: 8px 16px;
-  background: var(--primary);
-  color: white;
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  white-space: nowrap;
+.price-block small {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
-.add-cart-btn:hover {
-  background: var(--primary-dark);
-  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.2);
+.card-action {
+  min-width: 126px;
+  height: 46px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 18px 30px rgba(0, 113, 227, 0.18);
+}
+
+@media (max-width: 720px) {
+  .card-title {
+    font-size: 20px;
+  }
+
+  .card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .card-action {
+    width: 100%;
+  }
 }
 </style>

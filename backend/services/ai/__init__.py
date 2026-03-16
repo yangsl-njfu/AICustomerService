@@ -1,6 +1,5 @@
-"""
-AI服务模块
-"""
-from .workflow import AIWorkflow
+"""AI service exports."""
+from .runtime import runtime_factory
+from .workflow import AIWorkflow, ai_workflow
 
-__all__ = ["AIWorkflow"]
+__all__ = ["AIWorkflow", "ai_workflow", "runtime_factory"]

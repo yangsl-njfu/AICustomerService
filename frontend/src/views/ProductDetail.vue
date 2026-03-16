@@ -1,252 +1,633 @@
 <template>
-  <div v-if="currentProduct" class="product-detail-page">
-    <div class="product-main">
-      <div class="product-gallery">
-        <img :src="currentProduct.cover_image || '/placeholder.png'" :alt="currentProduct.title" />
-      </div>
-
-      <div class="product-summary">
-        <h1>{{ currentProduct.title }}</h1>
-        
-        <div class="product-rating">
-          <span class="rating">⭐ {{ currentProduct.rating.toFixed(1) }}</span>
-          <span class="reviews">{{ currentProduct.review_count }} 评价</span>
-          <span class="sales">销量 {{ currentProduct.sales_count }}</span>
-        </div>
-
-        <div class="product-price">
-          <span class="price">¥{{ currentProduct.price.toFixed(2) }}</span>
-          <span v-if="currentProduct.original_price" class="original-price">
-            ¥{{ currentProduct.original_price.toFixed(2) }}
-          </span>
-        </div>
-
-        <div class="product-meta">
-          <div class="meta-item">
-            <span class="label">难度：</span>
-            <span class="value">{{ difficultyText }}</span>
-          </div>
-          <div class="meta-item">
-            <span class="label">技术栈：</span>
-            <span class="value">{{ currentProduct.tech_stack?.join(', ') }}</span>
-          </div>
-        </div>
-
-        <div class="product-actions">
-          <button class="btn-primary" @click="handleAddToCart">加入购物车</button>
-          <button class="btn-secondary" @click="handleBuyNow">立即购买</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="product-details">
-      <div class="tabs">
-        <div class="tab" :class="{ active: activeTab === 'description' }" @click="activeTab = 'description'">
-          商品详情
-        </div>
-        <div class="tab" :class="{ active: activeTab === 'reviews' }" @click="activeTab = 'reviews'">
-          用户评价
-        </div>
-      </div>
-
-      <div class="tab-content">
-        <div v-if="activeTab === 'description'" class="description">
-          <p>{{ currentProduct.description }}</p>
-        </div>
-        <div v-else class="reviews">
-          <p>评价列表...</p>
-        </div>
-      </div>
-    </div>
+  <div v-if="loading && !currentProduct" class="detail-loading section-card">
+    <div class="loader"></div>
+    <strong>正在载入项目详情</strong>
+    <p>图片、描述和交付信息会一起呈现。</p>
   </div>
-  <div v-else class="loading">加载中...</div>
+
+  <div v-else-if="currentProduct" class="detail-page page-shell">
+    <section class="detail-hero section-card">
+      <div class="media-column">
+        <div class="main-media">
+          <img
+            :src="selectedPreview"
+            :alt="currentProduct.title"
+            @error="(event) => handleImageFallback(event, currentProduct?.title)"
+          />
+        </div>
+
+        <div v-if="galleryImages.length > 1" class="thumb-strip">
+          <button
+            v-for="image in galleryImages"
+            :key="image"
+            class="thumb-button"
+            :class="{ active: selectedPreview === image }"
+            type="button"
+            @click="selectedPreview = image"
+          >
+            <img :src="image" :alt="currentProduct.title" @error="(event) => handleImageFallback(event, currentProduct?.title)" />
+          </button>
+        </div>
+      </div>
+
+      <div class="summary-column">
+        <span class="eyebrow">{{ currentProduct.category?.name || 'Curated Project' }}</span>
+        <h1>{{ currentProduct.title }}</h1>
+        <p>{{ currentProduct.description }}</p>
+
+        <div class="summary-badges">
+          <span class="summary-badge">{{ difficultyText }}</span>
+          <span class="summary-badge">{{ currentProduct.tech_stack?.slice(0, 2).join(' · ') || '多技术栈整合' }}</span>
+          <span class="summary-badge">已售 {{ currentProduct.sales_count }}</span>
+        </div>
+
+        <div class="price-panel">
+          <div>
+            <strong>{{ formatPrice(currentProduct.price) }}</strong>
+            <span v-if="currentProduct.original_price">{{ formatPrice(currentProduct.original_price) }}</span>
+          </div>
+          <small>评分 {{ currentProduct.rating.toFixed(1) }} · {{ currentProduct.review_count }} 条评价</small>
+        </div>
+
+        <div class="action-row">
+          <button class="accent-button" type="button" @click="handleBuyNow">立即购买</button>
+          <button class="ghost-button" type="button" @click="handleAddToCart">加入购物车</button>
+          <button class="glass-button" type="button" @click="router.push('/chat')">先问 AI 助手</button>
+        </div>
+
+        <div class="meta-grid">
+          <article class="meta-card">
+            <span>技术栈</span>
+            <strong>{{ currentProduct.tech_stack?.length || 0 }} 项</strong>
+            <p>{{ currentProduct.tech_stack?.join(' · ') || '等待补充' }}</p>
+          </article>
+          <article class="meta-card">
+            <span>发布时间</span>
+            <strong>{{ formatDate(currentProduct.created_at) }}</strong>
+            <p>支持先咨询后下单，减少沟通成本。</p>
+          </article>
+          <article class="meta-card">
+            <span>卖家信息</span>
+            <strong>{{ currentProduct.seller?.username || '平台精选' }}</strong>
+            <p>适合展示、答辩、交付与知识问答场景。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="detail-grid">
+      <article class="story-card section-card">
+        <span class="eyebrow">Project Story</span>
+        <h2>项目亮点</h2>
+        <p>{{ currentProduct.description }}</p>
+      </article>
+
+      <article class="story-card section-card">
+        <span class="eyebrow">Tech Stack</span>
+        <h2>技术组合</h2>
+        <div class="stack-list">
+          <span v-for="tech in currentProduct.tech_stack" :key="tech">{{ tech }}</span>
+          <span v-if="!currentProduct.tech_stack?.length">暂无技术栈说明</span>
+        </div>
+      </article>
+
+      <article class="story-card section-card">
+        <span class="eyebrow">Delivery</span>
+        <h2>交付与素材</h2>
+        <ul class="delivery-list">
+          <li>文件数量：{{ currentProduct.files?.length || 0 }}</li>
+          <li>额外图片：{{ currentProduct.images?.length || 0 }}</li>
+          <li>浏览量：{{ currentProduct.view_count }}</li>
+          <li>状态：{{ currentProduct.status }}</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="detail-tabs section-card">
+      <div class="tab-switcher">
+        <button class="tab-button" :class="{ active: activeTab === 'description' }" type="button" @click="activeTab = 'description'">
+          项目说明
+        </button>
+        <button class="tab-button" :class="{ active: activeTab === 'files' }" type="button" @click="activeTab = 'files'">
+          交付内容
+        </button>
+        <button class="tab-button" :class="{ active: activeTab === 'reviews' }" type="button" @click="activeTab = 'reviews'">
+          评价预览
+        </button>
+      </div>
+
+      <div v-if="activeTab === 'description'" class="tab-panel">
+        <h3>完整说明</h3>
+        <p>{{ currentProduct.description }}</p>
+      </div>
+
+      <div v-else-if="activeTab === 'files'" class="tab-panel">
+        <h3>交付清单</h3>
+        <div v-if="currentProduct.files?.length" class="file-grid">
+          <article v-for="file in currentProduct.files" :key="file.id" class="file-card">
+            <strong>{{ file.name }}</strong>
+            <span>{{ file.type }}</span>
+            <small>{{ formatBytes(file.size) }}</small>
+          </article>
+        </div>
+        <p v-else>当前项目没有提供单独的文件说明，建议先通过 AI 助手咨询交付细节。</p>
+      </div>
+
+      <div v-else class="tab-panel">
+        <h3>评价概览</h3>
+        <div class="review-overview">
+          <strong>{{ currentProduct.rating.toFixed(1) }}</strong>
+          <span>综合评分</span>
+        </div>
+        <p>当前共 {{ currentProduct.review_count }} 条评价。后续可以继续补全单条评论内容模块。</p>
+      </div>
+    </section>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useProductStore } from '@/stores/product'
-import { useCartStore } from '@/stores/cart'
 import { storeToRefs } from 'pinia'
+import { ElMessage } from 'element-plus'
 import { browseAPI } from '@/api/browse'
+import { useCartStore } from '@/stores/cart'
+import { useProductStore } from '@/stores/product'
+import { handleImageFallback, resolveProductImage } from '@/utils/image'
 
 const route = useRoute()
 const router = useRouter()
 const productStore = useProductStore()
 const cartStore = useCartStore()
-const { currentProduct } = storeToRefs(productStore)
+const { currentProduct, loading } = storeToRefs(productStore)
 
-const activeTab = ref('description')
-const enterTime = ref<number>(0)
+const activeTab = ref<'description' | 'files' | 'reviews'>('description')
+const selectedPreview = ref('')
+const enterTime = ref(0)
 
 const difficultyText = computed(() => {
   const map: Record<string, string> = {
-    easy: '简单',
-    medium: '中等',
-    hard: '困难'
+    easy: '轻量入门',
+    medium: '标准进阶',
+    hard: '高阶项目'
   }
-  return map[currentProduct.value?.difficulty || ''] || currentProduct.value?.difficulty
+
+  return map[currentProduct.value?.difficulty || ''] || currentProduct.value?.difficulty || '项目方案'
 })
 
-onMounted(async () => {
-  const productId = route.params.id as string
+const galleryImages = computed(() => {
+  if (!currentProduct.value) return []
+
+  const rawImages = [
+    resolveProductImage(currentProduct.value.cover_image, currentProduct.value.title),
+    ...(currentProduct.value.images?.map(image => image.url).filter(Boolean) || [])
+  ]
+
+  return Array.from(new Set(rawImages))
+})
+
+watch(
+  () => route.params.id,
+  async (newId, oldId) => {
+    if (oldId) {
+      await recordBrowseDuration()
+    }
+
+    if (typeof newId === 'string') {
+      await loadProduct(newId)
+    }
+  },
+  { immediate: true }
+)
+
+onUnmounted(() => {
+  recordBrowseDuration()
+})
+
+async function loadProduct(productId: string) {
+  activeTab.value = 'description'
   await productStore.fetchProductDetail(productId)
+  selectedPreview.value = galleryImages.value[0] || resolveProductImage(undefined, currentProduct.value?.title)
   enterTime.value = Date.now()
+
   try {
     await browseAPI.recordBrowse(productId, 0)
-  } catch (e) {
-    console.log('记录浏览失败', e)
+  } catch (error) {
+    console.error('Failed to record product visit', error)
   }
-})
+}
 
-onUnmounted(async () => {
-  if (enterTime.value > 0 && currentProduct.value) {
-    const viewDuration = Math.floor((Date.now() - enterTime.value) / 1000)
-    try {
-      await browseAPI.recordBrowse(currentProduct.value.id, viewDuration)
-    } catch (e) {
-      console.log('更新浏览时长失败', e)
-    }
+async function recordBrowseDuration() {
+  if (!currentProduct.value || enterTime.value <= 0) return
+
+  const duration = Math.max(0, Math.floor((Date.now() - enterTime.value) / 1000))
+  enterTime.value = 0
+
+  try {
+    await browseAPI.recordBrowse(currentProduct.value.id, duration)
+  } catch (error) {
+    console.error('Failed to update browse duration', error)
   }
-})
+}
+
+function formatPrice(value?: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2
+  }).format(value ?? 0)
+}
+
+function formatDate(value?: string) {
+  if (!value) return '待补充'
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  }).format(new Date(value))
+}
+
+function formatBytes(size = 0) {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
 
 async function handleAddToCart() {
   if (!currentProduct.value) return
+
   try {
     await cartStore.addToCart(currentProduct.value.id)
-    alert('已添加到购物车')
+    ElMessage.success('已加入购物车')
   } catch (error) {
-    alert('添加失败')
+    console.error('Failed to add current product to cart', error)
+    ElMessage.error('加入购物车失败，请稍后重试')
   }
 }
 
 async function handleBuyNow() {
-  if (!currentProduct.value) return
   await handleAddToCart()
   router.push('/cart')
 }
 </script>
 
 <style scoped>
-.product-detail-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+.detail-page {
+  gap: 20px;
 }
 
-.product-main {
+.detail-loading {
+  min-height: 420px;
+  padding: 48px 24px;
   display: flex;
-  gap: 40px;
-  margin-bottom: 40px;
-  background: white;
-  padding: 30px;
-  border-radius: 8px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
 }
 
-.product-gallery {
-  flex: 1;
+.loader {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 4px solid rgba(0, 113, 227, 0.12);
+  border-top-color: var(--primary);
+  animation: spin 0.9s linear infinite;
 }
 
-.product-gallery img {
-  width: 100%;
-  border-radius: 8px;
-}
-
-.product-summary {
-  flex: 1;
-}
-
-.product-summary h1 {
+.detail-loading strong {
   font-size: 24px;
-  margin-bottom: 16px;
 }
 
-.product-rating {
+.detail-loading p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.detail-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.88fr);
+  gap: 22px;
+  padding: 24px;
+}
+
+.media-column {
   display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-  color: #666;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.product-price {
-  margin-bottom: 24px;
+.main-media {
+  overflow: hidden;
+  border-radius: 30px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.06), rgba(0, 113, 227, 0.1));
+  aspect-ratio: 1.18;
 }
 
-.price {
-  font-size: 32px;
-  color: #ff4d4f;
+.main-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 12px;
+}
+
+.thumb-button {
+  overflow: hidden;
+  padding: 0;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.84);
+  aspect-ratio: 1;
+}
+
+.thumb-button.active {
+  border-color: rgba(0, 113, 227, 0.28);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.08);
+}
+
+.thumb-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.summary-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  justify-content: center;
+}
+
+.summary-column h1 {
+  margin: 0;
+  font-size: clamp(36px, 4.2vw, 62px);
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+}
+
+.summary-column p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.summary-badge {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-secondary);
+  font-size: 13px;
   font-weight: 600;
 }
 
-.original-price {
-  font-size: 18px;
-  color: #999;
-  text-decoration: line-through;
-  margin-left: 12px;
-}
-
-.product-meta {
-  margin-bottom: 32px;
-}
-
-.meta-item {
-  margin-bottom: 12px;
-}
-
-.label {
-  color: #666;
-  margin-right: 8px;
-}
-
-.product-actions {
+.price-panel {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, rgba(10, 18, 34, 0.94), rgba(0, 113, 227, 0.88));
+  color: #f8fbff;
+  box-shadow: var(--shadow);
+}
+
+.price-panel strong {
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.price-panel span {
+  margin-left: 10px;
+  color: rgba(248, 251, 255, 0.66);
+  font-size: 16px;
+  text-decoration: line-through;
+}
+
+.price-panel small {
+  color: rgba(248, 251, 255, 0.78);
+  font-size: 13px;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.action-row .accent-button,
+.action-row .ghost-button,
+.action-row .glass-button {
+  flex: 1;
+  justify-content: center;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.meta-card {
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+}
+
+.meta-card span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.meta-card strong {
+  display: block;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.meta-card p {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
-.btn-primary, .btn-secondary {
-  flex: 1;
-  padding: 12px 24px;
-  border: none;
-  border-radius: 4px;
-  font-size: 16px;
-  cursor: pointer;
+.story-card {
+  padding: 22px;
 }
 
-.btn-primary {
-  background: #1890ff;
-  color: white;
+.story-card h2 {
+  margin: 14px 0 10px;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
 }
 
-.btn-secondary {
-  background: #ff4d4f;
-  color: white;
+.story-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.8;
 }
 
-.product-details {
-  background: white;
-  padding: 30px;
-  border-radius: 8px;
-}
-
-.tabs {
+.stack-list {
   display: flex;
-  border-bottom: 1px solid #e0e0e0;
-  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.tab {
-  padding: 12px 24px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
+.stack-list span {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.tab.active {
-  color: #1890ff;
-  border-bottom-color: #1890ff;
+.delivery-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  line-height: 1.9;
 }
 
-.loading {
-  text-align: center;
-  padding: 60px;
+.detail-tabs {
+  padding: 24px;
+}
+
+.tab-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.tab-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tab-button.active {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 16px 30px rgba(0, 113, 227, 0.16);
+}
+
+.tab-panel h3 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.tab-panel p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.file-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border);
+}
+
+.file-card strong {
+  font-size: 16px;
+}
+
+.file-card span,
+.file-card small {
+  color: var(--text-muted);
+}
+
+.review-overview {
+  margin-bottom: 12px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(0, 113, 227, 0.08);
+}
+
+.review-overview strong {
+  font-size: 34px;
+  line-height: 1;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .detail-hero,
+  .detail-grid,
+  .meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .detail-hero,
+  .detail-tabs {
+    padding: 18px;
+  }
+
+  .summary-column h1 {
+    font-size: 38px;
+  }
+
+  .action-row {
+    flex-direction: column;
+  }
 }
 </style>

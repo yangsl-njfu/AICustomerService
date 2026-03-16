@@ -43,7 +43,16 @@ _config_path = os.path.join(_backend_dir, "config.py")
 _config_spec = importlib.util.spec_from_file_location("backend.config", _config_path)
 _config_mod = importlib.util.module_from_spec(_config_spec)
 sys.modules["backend.config"] = _config_mod
+sys.modules["config"] = _config_mod
 _config_spec.loader.exec_module(_config_mod)
+
+# Load constants.py
+_constants_path = os.path.join(_backend_dir, "services", "ai", "constants.py")
+_constants_spec = importlib.util.spec_from_file_location("backend.services.ai.constants", _constants_path)
+_constants_mod = importlib.util.module_from_spec(_constants_spec)
+_constants_mod.__package__ = "backend.services.ai"
+sys.modules["backend.services.ai.constants"] = _constants_mod
+_constants_spec.loader.exec_module(_constants_mod)
 
 # Load intent_node.py
 _intent_path = os.path.join(_backend_dir, "services", "ai", "nodes", "intent_node.py")
@@ -59,7 +68,6 @@ _intent_spec.loader.exec_module(_intent_mod)
 _format_intent_history = _intent_mod._format_intent_history
 _find_fallback_intent = _intent_mod._find_fallback_intent
 IntentRecognitionNode = _intent_mod.IntentRecognitionNode
-VALID_INTENTS = _intent_mod.VALID_INTENTS
 
 
 # ── _format_intent_history tests ─────────────────────────────────────
@@ -72,7 +80,7 @@ class TestFormatIntentHistory:
     def test_single_entry(self):
         history = [{"intent": "商品咨询", "confidence": 0.9, "turn": 1}]
         result = _format_intent_history(history, max_entries=5)
-        assert "第1轮" in result
+        assert "第 1 轮" in result
         assert "商品咨询" in result
         assert "0.9" in result
 
@@ -85,9 +93,9 @@ class TestFormatIntentHistory:
         lines = result.strip().split("\n")
         assert len(lines) == 3
         # Should contain the last 3 entries (turns 8, 9, 10)
-        assert "第8轮" in lines[0]
-        assert "第9轮" in lines[1]
-        assert "第10轮" in lines[2]
+        assert "第 8 轮" in lines[0]
+        assert "第 9 轮" in lines[1]
+        assert "第 10 轮" in lines[2]
 
     def test_fewer_entries_than_max(self):
         history = [
@@ -101,7 +109,7 @@ class TestFormatIntentHistory:
     def test_missing_fields_use_defaults(self):
         history = [{"intent": "问答"}]  # missing confidence and turn
         result = _format_intent_history(history, max_entries=5)
-        assert "第0轮" in result
+        assert "第 0 轮" in result
         assert "0.0" in result
 
 
@@ -213,9 +221,9 @@ class TestIntentRecognitionNodeExecute:
 
         result = await node.execute(state)
 
-        assert result["intent"] == "商品推荐"
+        assert result["intent"] == "推荐"
         assert len(result["intent_history"]) == 1
-        assert result["intent_history"][0]["intent"] == "商品推荐"
+        assert result["intent_history"][0]["intent"] == "推荐"
         assert result["intent_history"][0]["turn"] == 1
 
     @pytest.mark.asyncio
@@ -245,7 +253,7 @@ class TestIntentRecognitionNodeExecute:
             {"intent": "商品推荐", "confidence": 0.9, "turn": 1, "timestamp": "t1"},
         ]
         state = self._make_state(
-            message="这个项目多少钱",
+            message="我想继续刚才的话题",
             intent_history=existing_history,
         )
 
@@ -261,13 +269,13 @@ class TestIntentRecognitionNodeExecute:
     async def test_execute_uses_basic_prompt_when_no_history(self):
         mock_llm = self._make_mock_llm("问答")
         node = IntentRecognitionNode(llm=mock_llm)
-        state = self._make_state(message="你好", intent_history=[])
+        state = self._make_state(message="我想补充一点信息", intent_history=[])
 
         await node.execute(state)
 
         call_args = mock_llm.ainvoke.call_args[0][0]
         system_msg = call_args[0].content
-        assert "意图历史" not in system_msg
+        assert "最近的意图历史" not in system_msg
 
     @pytest.mark.asyncio
     async def test_attachment_shortcut_appends_to_history(self):

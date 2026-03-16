@@ -1,59 +1,114 @@
 <template>
-  <div class="chat-container">
-    <!-- 侧边栏 - 会话列表 -->
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <el-button type="primary" style="width: 100%" @click="createNewSession">
-          <el-icon><Plus /></el-icon>
-          新建对话
-        </el-button>
-      </div>
+  <div class="chat-container" :class="{ 'sidebar-open': sidebarVisible }">
+    <div v-if="sidebarVisible" class="chat-backdrop" @click="closeSidebar"></div>
 
-      <div class="session-list">
-        <div
-          v-for="group in sessionGroups"
-          :key="group.label"
-          class="session-group"
-        >
-          <div class="session-group-title">{{ group.label }}</div>
-          <div
-            v-for="session in group.sessions"
-            :key="session.id"
-            class="session-item"
-            :class="{ active: chatStore.currentSession?.id === session.id }"
-            @click="selectSession(session.id)"
-          >
-            <div class="session-content">
-              <div class="session-title">{{ session.title }}</div>
-              <div class="session-info">{{ session.message_count }} 条消息</div>
-            </div>
-            <el-button
-              class="session-delete-btn"
-              type="danger"
-              link
-              @click.stop="deleteSession(session.id)"
-            >
-              <el-icon><Close /></el-icon>
+    <div class="chat-shell" :class="{ 'sidebar-collapsed': historyCollapsed && !isMobileLayout }">
+      <!-- 侧边栏 - 会话列表 -->
+      <div class="sidebar" :class="{ open: sidebarVisible }">
+        <div class="sidebar-header">
+          <div class="sidebar-title">
+            <h3>AI 助手会话</h3>
+          </div>
+
+          <div class="sidebar-header-actions">
+            <el-button class="sidebar-collapse" text circle @click="toggleHistoryPanel">
+              <el-icon>
+                <component :is="isMobileLayout ? Close : ArrowLeftBold" />
+              </el-icon>
             </el-button>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- 主聊天区域 -->
-    <div class="chat-main">
-      <div class="chat-header">
-        <h3>{{ chatStore.currentSession?.title || '请选择或创建对话' }}</h3>
-      </div>
+        <div class="sidebar-toolbar">
+          <el-button type="primary" style="width: 100%" @click="createNewSession">
+            <el-icon><Plus /></el-icon>
+            新建对话
+          </el-button>
+        </div>
 
-      <div ref="messageListRef" class="message-list">
-        <div class="message-list-inner">
+        <div class="session-list">
+          <div v-if="sessionGroups.length === 0" class="session-list-empty">
+            <strong>还没有历史会话</strong>
+            <p>从一个问题开始，系统会自动创建新的咨询记录。</p>
+          </div>
+
           <div
-            v-for="(message, messageIndex) in messageList"
-            :key="message.id"
-            class="message-item"
-            :class="message.role"
+            v-for="group in sessionGroups"
+            :key="group.label"
+            class="session-group"
           >
+            <div class="session-group-title">{{ group.label }}</div>
+            <div
+              v-for="session in group.sessions"
+              :key="session.id"
+              class="session-item"
+              :class="{ active: chatStore.currentSession?.id === session.id }"
+              @click="selectSession(session.id)"
+            >
+              <div class="session-content">
+                <div class="session-title">{{ session.title }}</div>
+                <div class="session-info">{{ session.message_count }} 条消息</div>
+              </div>
+              <el-button
+                class="session-delete-btn"
+                type="danger"
+                link
+                @click.stop="deleteSession(session.id)"
+              >
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主聊天区域 -->
+      <div class="chat-main" :class="{ 'is-new-chat': messageList.length === 0 }">
+        <div class="chat-header">
+          <div class="chat-header-main">
+            <div class="chat-header-left">
+              <el-button class="sidebar-toggle" text circle @click="toggleHistoryPanel">
+                <el-icon>
+                  <component :is="isMobileLayout ? Menu : historyCollapsed ? ArrowRightBold : ArrowLeftBold" />
+                </el-icon>
+              </el-button>
+
+              <div class="chat-header-copy">
+                <h3>{{ chatStore.currentSession?.title || '请选择或创建对话' }}</h3>
+              </div>
+            </div>
+
+            <div class="chat-header-actions">
+              <span class="session-stat">{{ chatStore.sessions.length }} 个会话</span>
+              <el-button plain @click="createNewSession">新会话</el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-content-wrapper">
+          <div ref="messageListRef" class="message-list">
+            <div class="message-list-inner">
+              <div v-if="messageList.length === 0" class="conversation-empty">
+                <h4>有什么可以帮你的吗？</h4>
+                <div class="empty-suggestions">
+                  <button class="suggestion-chip" type="button" @click="prefillMessage('帮我推荐一个适合 Java + Vue 的毕业设计项目')">
+                    推荐项目
+                  </button>
+                  <button class="suggestion-chip" type="button" @click="prefillMessage('帮我查一下最近订单的物流状态')">
+                    查询订单
+                  </button>
+                  <button class="suggestion-chip" type="button" @click="prefillMessage('售后流程怎么走？')">
+                    售后咨询
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-for="(message, _messageIndex) in messageList"
+                :key="message.id"
+                class="message-item"
+                :class="message.role"
+              >
           <!-- 用户消息 -->
           <template v-if="message.role === 'user'">
             <div class="message-avatar user-avatar">
@@ -343,6 +398,8 @@
           </el-button>
         </div>
       </div>
+      </div> <!-- End chat-content-wrapper -->
+    </div>
     </div>
 
     <!-- 订单选择弹窗 -->
@@ -416,14 +473,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '@/stores/auth'
-import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag, Close, Star, Box, Coin, QuestionFilled } from '@element-plus/icons-vue'
+import { Plus, User, ChatDotRound, Document, Paperclip, Delete, Upload, ArrowRight, ArrowDown, Loading, ShoppingBag, Close, Star, Box, Coin, QuestionFilled, Menu, ArrowLeftBold, ArrowRightBold } from '@element-plus/icons-vue'
 import { apiClient } from '@/api/client'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import OrderSelector from '@/components/OrderSelector.vue'
 
@@ -438,6 +495,9 @@ const messageListRef = ref<HTMLElement>()
 const selectedFiles = ref<File[]>([])
 const uploading = ref(false)
 const isDragOver = ref(false)
+const sidebarVisible = ref(false)
+const isMobileLayout = ref(false)
+const historyCollapsed = ref(false)
 const expandedThinking = ref<Record<string, boolean>>({})
 const orderSelectorVisible = ref(false)
 const quickActionIconMap: Record<string, any> = {
@@ -482,6 +542,30 @@ const sessionGroups = computed(() => {
     .filter(label => groups[label]?.length)
     .map(label => ({ label, sessions: groups[label] }))
 })
+
+const syncViewport = () => {
+  isMobileLayout.value = window.innerWidth <= 980
+  if (!isMobileLayout.value) {
+    sidebarVisible.value = false
+  }
+}
+
+const toggleSidebar = () => {
+  sidebarVisible.value = !sidebarVisible.value
+}
+
+const closeSidebar = () => {
+  sidebarVisible.value = false
+}
+
+const toggleHistoryPanel = () => {
+  if (isMobileLayout.value) {
+    toggleSidebar()
+    return
+  }
+
+  historyCollapsed.value = !historyCollapsed.value
+}
 
 // 图片压缩配置
 const IMAGE_COMPRESSION_CONFIG = {
@@ -576,6 +660,9 @@ const paymentData = ref<{
 }>({})
 
 onMounted(() => {
+  syncViewport()
+  window.addEventListener('resize', syncViewport)
+
   // 使用 setTimeout 避免阻塞页面渲染
   setTimeout(async () => {
     await chatStore.fetchSessions()
@@ -583,6 +670,10 @@ onMounted(() => {
       await chatStore.selectSession(chatStore.sessions[0].id)
     }
   }, 0)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncViewport)
 })
 
 watch(() => messageList.value.length, () => {
@@ -594,10 +685,16 @@ watch(() => messageList.value.length, () => {
 
 const createNewSession = async () => {
   await chatStore.createSession()
+  if (isMobileLayout.value) {
+    closeSidebar()
+  }
 }
 
 const selectSession = async (sessionId: string) => {
   await chatStore.selectSession(sessionId)
+  if (isMobileLayout.value) {
+    closeSidebar()
+  }
 }
 
 
@@ -818,7 +915,6 @@ const sendMessage = async () => {
         file_name: response.file_name,
         file_type: response.file_type,
         file_size: response.file_size,
-        file_path: response.file_path,
         extracted_text: response.extracted_text || null,  // 视觉LLM提取的文字
         ocr_used: response.ocr_used || false
       }))
@@ -854,6 +950,16 @@ const handleEnterKey = () => {
 
 const toggleThinking = (messageId: string) => {
   expandedThinking.value[messageId] = !expandedThinking.value[messageId]
+}
+
+const prefillMessage = (message: string) => {
+  inputMessage.value = message
+  if (isMobileLayout.value) {
+    closeSidebar()
+  }
+  nextTick(() => {
+    scrollToBottom()
+  })
 }
 
 const scrollToBottom = () => {
@@ -1022,7 +1128,7 @@ const handleOrderSelect = async (order: any) => {
 
     // 使用流式API（直连后端，绕过 Vite 代理的 SSE 缓冲）
     const token = localStorage.getItem('access_token')
-    const response = await fetch('http://localhost:8000/api/chat/stream', {
+    const response = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1183,6 +1289,28 @@ const handleQuickAction = async (action: any) => {
       // 打开订单选择弹窗
       console.log('打开订单选择弹窗')
       orderSelectorVisible.value = true
+    } else if (action.action === 'cancel_order') {
+      const orderNo = action.data?.order_no
+      if (!orderNo) {
+        ElMessage.error('订单信息不完整，暂时无法取消')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(`确认取消订单 ${orderNo} 吗？`, '取消订单', {
+          confirmButtonText: '确认取消',
+          cancelButtonText: '返回',
+          type: 'warning'
+        })
+      } catch (error) {
+        if (error !== 'cancel' && error !== 'close') {
+          ElMessage.error('取消操作未完成，请重试')
+        }
+        return
+      }
+
+      inputMessage.value = `取消订单 ${orderNo}`
+      setTimeout(() => sendMessage(), 0)
     } else if (action.action === 'navigate') {
       // 页面跳转
       const path = action.data?.path
@@ -1293,34 +1421,275 @@ const handleQuickAction = async (action: any) => {
 
 <style scoped>
 .chat-container {
+  /* ==================================================
+     Modern Tech Blue Theme
+     Clean, professional, and trustworthy AI assistant
+     ================================================== */
+  
+  /* Primary Colors - Tech Blue */
+  --primary: #2563EB;
+  --primary-light: #3B82F6;
+  --primary-dark: #1D4ED8;
+  --primary-lighter: rgba(37, 99, 235, 0.08);
+  
+  /* Accent Colors - Violet */
+  --accent: #7C3AED;
+  --accent-light: #8B5CF6;
+  
+  /* Text Colors - Slate */
+  --text: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-light: #94A3B8;
+  
+  /* Borders & Surfaces */
+  --border: rgba(226, 232, 240, 0.8);
+  --border-strong: rgba(203, 213, 225, 0.8);
+  --surface-2: rgba(255, 255, 255, 0.9);
+  --surface-3: #F8FAFC;
+  --surface-hover: #F1F5F9;
+  
+  /* Utilities */
+  --muted: #64748B;
+  --danger: #EF4444;
+  --danger-dark: #B91C1C;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  /* Element Plus Overrides */
+  --el-color-primary: var(--primary);
+  --el-color-primary-light-3: #60A5FA;
+  --el-color-primary-light-5: #93C5FD;
+  --el-color-primary-light-7: #BFDBFE;
+  --el-color-primary-light-8: #DBEAFE;
+  --el-color-primary-light-9: #EFF6FF;
+  --el-color-primary-dark-2: #1E40AF;
+  
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 40%),
+    radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.08), transparent 40%),
+    linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 100%);
+  padding: clamp(10px, 1.2vw, 18px);
+  overflow: hidden;
+}
+
+.chat-container::before,
+.chat-container::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(60px);
+  z-index: 0;
+}
+
+.chat-container::before {
+  width: 500px;
+  height: 500px;
+  top: -200px;
+  right: -100px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.15), rgba(255, 255, 255, 0));
+}
+
+.chat-container::after {
+  width: 400px;
+  height: 400px;
+  left: -150px;
+  bottom: -150px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.1), rgba(255, 255, 255, 0));
+}
+
+.chat-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 18, 28, 0.48);
+  backdrop-filter: blur(8px);
+  z-index: 25;
+}
+
+.chat-shell {
   display: flex;
   height: 100%;
-  background: transparent;
-  padding: 24px;
-  gap: 20px;
+  min-height: 0;
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 24px;
   overflow: hidden;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.chat-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
+  pointer-events: none;
 }
 
 .sidebar {
   width: 300px;
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  min-height: 0;
+  position: relative;
+  z-index: 1;
+  background: rgba(248, 250, 252, 0.8);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  border-right: 1px solid var(--border);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.5);
+  transition: width 0.24s ease, opacity 0.18s ease, transform 0.28s ease;
+}
+
+.chat-shell.sidebar-collapsed .sidebar {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-shell.sidebar-collapsed .sidebar > * {
+  opacity: 0;
 }
 
 .sidebar-header {
-  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 18px 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+}
+
+.sidebar-title h3 {
+  margin: 6px 0 8px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.sidebar-title p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sidebar-kicker {
+  display: inline-flex;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--primary-lighter);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1);
+}
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-collapse {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar-collapse:hover {
+  color: var(--primary);
+  border-color: var(--primary-light);
+  background: white;
+}
+
+.sidebar-toolbar {
+  padding: 0 18px 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.sidebar-toolbar :deep(.el-button--primary) {
+  height: 46px;
+  border: none;
+  border-radius: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
+}
+
+.sidebar-toolbar :deep(.el-button--primary:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.3);
 }
 
 .session-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 10px;
+}
+
+.session-list::-webkit-scrollbar,
+.message-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.session-list::-webkit-scrollbar-track,
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.session-list::-webkit-scrollbar-thumb,
+.message-list::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.session-list-empty {
+  padding: 18px;
+  border-radius: 20px;
+  background: white;
+  border: 1px dashed var(--border-strong);
+}
+
+.session-list-empty strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.session-list-empty p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .session-group {
@@ -1330,21 +1699,38 @@ const handleQuickAction = async (action: any) => {
 .session-group-title {
   font-size: 11px;
   color: var(--text-muted);
-  letter-spacing: 0.4px;
-  padding: 6px 10px;
+  letter-spacing: 0.1em;
+  padding: 8px 12px 6px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .session-item {
   padding: 10px 12px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   cursor: pointer;
-  border-radius: var(--radius);
+  border-radius: 14px;
   transition: all 0.2s ease;
-  background: transparent;
+  position: relative;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.session-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 .session-content {
@@ -1364,19 +1750,24 @@ const handleQuickAction = async (action: any) => {
 
 .session-item:hover {
   background: var(--surface-hover);
-  color: var(--text);
-  border-color: var(--border);
+  border-color: var(--primary-light);
+  transform: translateX(2px);
 }
 
 .session-item.active {
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--primary-lighter);
   color: var(--primary);
-  border-color: rgba(37, 99, 235, 0.2);
+  border-color: var(--primary-light);
+}
+
+.session-item:hover::before,
+.session-item.active::before {
+  opacity: 1;
 }
 
 .session-title {
-  font-weight: 500;
-  margin-bottom: 2px;
+  font-weight: 700;
+  margin-bottom: 4px;
   font-size: 13px;
   color: var(--text);
   white-space: nowrap;
@@ -1386,112 +1777,337 @@ const handleQuickAction = async (action: any) => {
 
 .session-info {
   font-size: 11px;
-  color: var(--text-light);
+  color: var(--text-muted);
 }
 
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  min-width: 0;
+  background: transparent;
   overflow: hidden;
+}
+
+/* Chat Content Wrapper */
+.chat-content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  box-shadow: var(--shadow-sm);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.chat-main.is-new-chat .chat-content-wrapper {
+  justify-content: center;
+  align-items: center;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.chat-main.is-new-chat .message-list {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+  width: 100%;
+}
+
+.chat-main.is-new-chat .message-list::before {
+  display: none;
+}
+
+.chat-main.is-new-chat .conversation-empty {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 0 40px;
+  margin: 0;
+}
+
+.chat-main.is-new-chat .input-area {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0 20px;
+}
+
+.chat-main.is-new-chat .input-area-inner {
+  background: white;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .chat-header {
-  padding: 16px 24px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.chat-header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sidebar-toggle {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: white;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar-toggle:hover {
+  color: var(--primary);
+  border-color: var(--primary-light);
+}
+
+.chat-header-copy {
+  min-width: 0;
+}
+
+.chat-kicker {
+  display: inline-flex;
+  margin-bottom: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-lighter);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .chat-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.chat-header p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-stat {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: 12px;
   font-weight: 600;
+}
+
+.chat-header-actions :deep(.el-button) {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border-color: var(--border-strong);
+  font-weight: 600;
+}
+
+.chat-header-actions :deep(.el-button:hover) {
+  color: var(--primary);
+  border-color: var(--primary-light);
 }
 
 .message-list {
   flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-  background: var(--surface-2);
   min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  padding: 24px 20px;
+  background: #F8FAFC;
 }
 
 .message-list-inner {
-  max-width: 860px;
+  max-width: 900px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.conversation-empty {
+  padding: 40px;
+  margin-bottom: 24px;
+  border-radius: 24px;
+  background: white;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.empty-badge {
+  display: inline-flex;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--primary-lighter);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.conversation-empty h4 {
+  margin: 20px 0 10px;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.conversation-empty p {
+  margin: 0 auto;
+  max-width: 500px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.empty-suggestions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.suggestion-chip {
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.suggestion-chip:hover {
+  background: var(--primary-lighter);
+  color: var(--primary);
+  border-color: var(--primary-light);
+  transform: translateY(-1px);
 }
 
 .message-item {
   display: flex;
-  margin-bottom: 20px;
+  width: 100%;
+  max-width: min(820px, calc(100% - 16px));
+  margin-bottom: 24px;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.message-item.assistant,
+.message-item.system {
+  margin-right: auto;
 }
 
 .message-item.user {
   flex-direction: row-reverse;
+  margin-left: auto;
 }
 
 .message-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
-  background: var(--surface-2);
+  border-radius: 10px;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 12px;
-  font-size: 16px;
+  margin: 0;
+  font-size: 18px;
   flex-shrink: 0;
+  color: var(--primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .message-item.user .message-avatar {
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--primary);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
 }
 
 .message-content {
-  max-width: 720px;
-  background: var(--surface);
-  padding: 12px 16px;
-  border-radius: var(--radius-lg);
+  position: relative;
+  max-width: min(780px, calc(100% - 56px));
+  background: white;
+  padding: 16px 20px;
+  border-radius: 16px;
   border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .message-item.assistant .message-content,
 .message-item.system .message-content {
-  box-shadow: var(--shadow-sm);
+  border-top-left-radius: 4px;
 }
 
 .message-item.user .message-content {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.2);
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-top-right-radius: 4px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
 }
 
 .message-text {
-  line-height: 1.7;
-  font-size: 14px;
+  line-height: 1.75;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.message-item.user .message-text {
+  color: white;
 }
 
 .message-text :deep(p) {
-  margin: 6px 0;
+  margin: 8px 0;
 }
 
 .message-text :deep(p + p) {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .message-text :deep(ul),
 .message-text :deep(ol) {
-  margin: 8px 0;
-  padding-left: 18px;
+  margin: 10px 0;
+  padding-left: 20px;
 }
 
 .message-text :deep(li) {
-  margin: 4px 0;
+  margin: 6px 0;
 }
 
 .message-item.user .message-text {
@@ -1505,9 +2121,9 @@ const handleQuickAction = async (action: any) => {
 }
 
 .message-attachments {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border-light);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
 }
 
 .attachment-item {
@@ -1517,17 +2133,20 @@ const handleQuickAction = async (action: any) => {
   font-size: 13px;
   color: var(--text);
   margin-top: 4px;
-  padding: 4px 8px;
+  padding: 8px 12px;
   background: var(--surface-hover);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
+  border: 1px solid var(--border);
 }
 
 .message-item.user .message-attachments {
-  border-top-color: var(--border-light);
+  border-top-color: rgba(255, 255, 255, 0.2);
 }
 
 .message-item.user .attachment-item {
-  background: var(--primary-lighter);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 /* 图片附件样式 */
@@ -1548,29 +2167,33 @@ const handleQuickAction = async (action: any) => {
   border: 1px solid var(--border);
 }
 
+.message-item.user .attachment-image-preview {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 .attachment-image-preview:hover {
   transform: scale(1.02);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow);
 }
 
 .message-time {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 6px;
+  margin-top: 8px;
+  letter-spacing: 0.05em;
 }
 
 .message-item.user .message-time {
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.7);
 }
-
 
 /* 用户发送的订单卡片样式 */
 .user-order-card {
   margin-top: 12px;
   padding: 12px;
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
 }
 
 .user-order-card .order-card-header {
@@ -1579,21 +2202,22 @@ const handleQuickAction = async (action: any) => {
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px dashed var(--border-light);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
 }
 
 .user-order-card .order-no {
   font-size: 12px;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.8);
   font-family: monospace;
 }
 
 .user-order-card .order-status {
   font-size: 12px;
   padding: 2px 8px;
-  background: var(--primary-lighter);
-  border-radius: var(--radius-sm);
+  background: white;
+  border-radius: 4px;
   color: var(--primary);
+  font-weight: 600;
 }
 
 .user-order-card .order-card-body {
@@ -1605,13 +2229,13 @@ const handleQuickAction = async (action: any) => {
 .user-order-card .product-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text);
+  color: white;
 }
 
 .user-order-card .order-amount {
   font-size: 14px;
   font-weight: 600;
-  color: var(--danger);
+  color: white;
 }
 
 /* 快速操作按钮样式 */
@@ -1629,9 +2253,9 @@ const handleQuickAction = async (action: any) => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: var(--surface);
+  background: white;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--text);
@@ -1640,15 +2264,17 @@ const handleQuickAction = async (action: any) => {
 }
 
 .quick-action-item:hover {
-  background: var(--primary-lighter);
-  border-color: var(--primary);
+  transform: translateY(-1px);
+  background: var(--surface-hover);
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow);
 }
 
 /* 订单卡片样式 */
 .quick-action-item.order_card,
 .quick-action-item.order_card_simple {
   padding: 16px;
-  background: var(--surface);
+  background: white;
 }
 
 /* 简洁订单卡片内容 */
@@ -1681,29 +2307,29 @@ const handleQuickAction = async (action: any) => {
 }
 
 .order-status-simple.status-pending {
-  background: rgba(251, 191, 36, 0.2);
-  color: #f59e0b;
+  background: rgba(251, 191, 36, 0.1);
+  color: #d97706;
 }
 
 .order-status-simple.status-paid {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
 }
 
 .order-status-simple.status-shipped {
-  background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
 }
 
 .order-status-simple.status-delivered,
 .order-status-simple.status-completed {
-  background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  color: #9333ea;
 }
 
 .order-status-simple.status-cancelled {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
 }
 
 .order-card-simple-body {
@@ -1725,7 +2351,7 @@ const handleQuickAction = async (action: any) => {
 .order-amount-simple {
   font-size: 16px;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .order-time-simple {
@@ -1755,40 +2381,40 @@ const handleQuickAction = async (action: any) => {
 
 .order-status {
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
 }
 
 .order-status.status-pending {
-  background: rgba(251, 191, 36, 0.2);
-  color: #f59e0b;
+  background: rgba(251, 191, 36, 0.1);
+  color: #d97706;
 }
 
 .order-status.status-paid {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
 }
 
 .order-status.status-shipped {
-  background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
 }
 
 .order-status.status-delivered,
 .order-status.status-completed {
-  background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  color: #9333ea;
 }
 
 .order-status.status-cancelled {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
 }
 
 .order-status.status-refunded {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
 }
 
 .order-card-body {
@@ -1813,8 +2439,8 @@ const handleQuickAction = async (action: any) => {
   font-size: 12px;
   color: var(--muted);
   padding: 2px 8px;
-  background: rgba(148, 163, 184, 0.15);
-  border-radius: 8px;
+  background: var(--surface-hover);
+  border-radius: 4px;
 }
 
 .order-meta {
@@ -1826,7 +2452,7 @@ const handleQuickAction = async (action: any) => {
 .order-amount {
   font-size: 16px;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .order-time {
@@ -1837,13 +2463,13 @@ const handleQuickAction = async (action: any) => {
 /* 地址卡片样式 */
 .quick-action-item.address {
   padding: 14px 16px;
-  background: var(--surface-2);
+  background: #F8FAFC;
   border: 1px solid var(--border);
 }
 
 .quick-action-item.address:hover {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.5);
+  background: white;
+  border-color: var(--primary-light);
 }
 
 .address-card-content {
@@ -1868,13 +2494,13 @@ const handleQuickAction = async (action: any) => {
 /* 优惠券卡片样式 */
 .quick-action-item.coupon {
   padding: 14px 16px;
-  background: rgba(251, 191, 36, 0.08);
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.05);
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 .quick-action-item.coupon:hover {
-  background: rgba(251, 191, 36, 0.15);
-  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.4);
 }
 
 .coupon-card-content {
@@ -1898,13 +2524,13 @@ const handleQuickAction = async (action: any) => {
 /* 售后卡片样式 */
 .quick-action-item.refund_card {
   padding: 14px 16px;
-  background: rgba(239, 68, 68, 0.06);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.04);
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .quick-action-item.refund_card:hover {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .refund-card-content {
@@ -1928,44 +2554,44 @@ const handleQuickAction = async (action: any) => {
 
 .refund-status {
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
 }
 
 .refund-status.status-pending {
-  background: rgba(251, 191, 36, 0.2);
-  color: #f59e0b;
+  background: rgba(251, 191, 36, 0.1);
+  color: #d97706;
 }
 
 .refund-status.status-approved {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
 }
 
 .refund-status.status-rejected {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
 }
 
 .refund-status.status-returning {
-  background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
 }
 
 .refund-status.status-refunding {
-  background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  color: #9333ea;
 }
 
 .refund-status.status-completed {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
 }
 
 .refund-status.status-cancelled {
-  background: rgba(148, 163, 184, 0.2);
-  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.1);
+  color: #64748b;
 }
 
 .refund-card-body {
@@ -1993,13 +2619,13 @@ const handleQuickAction = async (action: any) => {
 .refund-amount {
   font-size: 15px;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--danger);
 }
 
 /* 商品卡片样式 */
 .quick-action-item.product {
-  background: rgba(56, 189, 248, 0.1);
-  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(59, 130, 246, 0.04);
+  border-color: rgba(59, 130, 246, 0.2);
   flex-direction: column;
   align-items: flex-start;
   padding: 16px;
@@ -2007,8 +2633,8 @@ const handleQuickAction = async (action: any) => {
 }
 
 .quick-action-item.product:hover {
-  background: rgba(56, 189, 248, 0.2);
-  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.4);
 }
 
 .product-card-content {
@@ -2036,7 +2662,7 @@ const handleQuickAction = async (action: any) => {
 .product-card-price {
   font-size: 16px;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--danger);
   margin-left: 12px;
 }
 
@@ -2052,7 +2678,7 @@ const handleQuickAction = async (action: any) => {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .product-card-rating .rating-icon {
@@ -2072,10 +2698,10 @@ const handleQuickAction = async (action: any) => {
 
 .product-card-tech span {
   padding: 2px 8px;
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(59, 130, 246, 0.1);
   border-radius: 4px;
   font-size: 12px;
-  color: var(--text);
+  color: var(--primary);
 }
 
 .product-card-desc {
@@ -2088,7 +2714,7 @@ const handleQuickAction = async (action: any) => {
 .action-icon {
   font-size: 18px;
   flex-shrink: 0;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .action-label {
@@ -2104,13 +2730,13 @@ const handleQuickAction = async (action: any) => {
 
 .quick-action-item:hover .action-arrow {
   transform: translateX(4px);
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .selected-files {
-  padding: 12px 32px;
+  padding: 10px 20px;
   border-top: 1px solid var(--border);
-  background: var(--surface-2);
+  background: rgba(248, 250, 252, 0.8);
   flex-shrink: 0;
 }
 
@@ -2118,8 +2744,8 @@ const handleQuickAction = async (action: any) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  font-size: 14px;
+  margin-bottom: 10px;
+  font-size: 13px;
   color: var(--text);
   font-weight: 500;
 }
@@ -2127,7 +2753,7 @@ const handleQuickAction = async (action: any) => {
 .file-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .file-tag {
@@ -2135,7 +2761,7 @@ const handleQuickAction = async (action: any) => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: var(--surface-3);
+  background: white;
   border-radius: 999px;
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
@@ -2145,6 +2771,7 @@ const handleQuickAction = async (action: any) => {
 
 .file-tag:hover {
   box-shadow: var(--shadow);
+  border-color: var(--primary-light);
 }
 
 /* 图片预览样式 */
@@ -2159,7 +2786,7 @@ const handleQuickAction = async (action: any) => {
   align-items: center;
   gap: 8px;
   padding: 8px;
-  background: var(--surface-3);
+  background: white;
   border-radius: 12px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
@@ -2168,6 +2795,7 @@ const handleQuickAction = async (action: any) => {
 
 .image-preview-item:hover {
   box-shadow: var(--shadow);
+  border-color: var(--primary-light);
 }
 
 .preview-image {
@@ -2211,8 +2839,8 @@ const handleQuickAction = async (action: any) => {
 
 .input-area {
   display: flex;
-  padding: 16px 24px;
-  background: var(--surface);
+  padding: 16px 20px 20px;
+  background: white;
   align-items: center;
   position: relative;
   border-top: 1px solid var(--border);
@@ -2230,7 +2858,7 @@ const handleQuickAction = async (action: any) => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--primary-lighter);
+  background: rgba(255, 255, 255, 0.9);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2259,68 +2887,82 @@ const handleQuickAction = async (action: any) => {
   gap: 12px;
   align-items: flex-end;
   width: 100%;
-  max-width: 860px;
+  max-width: min(1120px, 100%);
   margin: 0 auto;
+  padding: 12px;
+  border-radius: 16px;
+  background: #F8FAFC;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .upload-btn :deep(.el-button) {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius);
-  background: var(--surface-hover);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: white;
   border: 1px solid var(--border);
   color: var(--text-muted);
+  box-shadow: var(--shadow-sm);
 }
 
 .order-btn {
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius);
-  background: var(--surface-hover);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: white;
   border: 1px solid var(--border);
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: var(--shadow-sm);
 }
 
+.upload-btn :deep(.el-button:hover),
 .order-btn:hover {
-  background: var(--primary-lighter);
+  background: white;
   border-color: var(--primary);
   color: var(--primary);
+  transform: translateY(-1px);
 }
 
 .input-area :deep(.el-textarea__inner) {
-  border-radius: var(--radius);
-  padding: 12px 16px;
+  border-radius: 10px;
+  padding: 8px 12px;
   font-size: 14px;
-  line-height: 1.5;
-  border: 1px solid var(--border);
-  background: var(--surface-hover);
+  line-height: 1.55;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text);
-  min-height: 44px !important;
-  max-height: 100px;
+  min-height: 40px !important;
+  max-height: 120px;
+  box-shadow: none;
+}
+
+.input-area :deep(.el-textarea__inner::placeholder) {
+  color: var(--text-light);
 }
 
 .input-area :deep(.el-textarea__inner:focus) {
-  border-color: var(--primary);
-  background: var(--surface-2);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+  box-shadow: none;
 }
 
 .input-area :deep(.el-button--primary) {
-  height: 44px;
+  height: 40px;
   padding: 0 20px;
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--primary);
   border: none;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 14px;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
 }
 
 .input-area :deep(.el-button--primary:hover) {
   background: var(--primary-light);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.3);
 }
 
 .input-area :deep(.el-button--primary:active) {
@@ -2329,7 +2971,7 @@ const handleQuickAction = async (action: any) => {
 
 /* 思考面板样式 */
 .thinking-panel {
-  background: var(--surface-2);
+  background: #F8FAFC;
   border-radius: 12px;
   margin-bottom: 16px;
   overflow: hidden;
@@ -2343,22 +2985,23 @@ const handleQuickAction = async (action: any) => {
   padding: 12px 16px;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: var(--surface-3);
+  background: white;
+  border-bottom: 1px solid transparent;
 }
 
 .thinking-header:hover {
-  background: rgba(148, 163, 184, 0.12);
+  background: #F1F5F9;
 }
 
 .thinking-icon {
   font-size: 16px;
-  color: var(--accent);
+  color: var(--primary);
   transition: transform 0.3s ease;
 }
 
 .thinking-icon.loading {
   animation: spin 1s linear infinite;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 @keyframes spin {
@@ -2376,25 +3019,25 @@ const handleQuickAction = async (action: any) => {
   font-size: 12px;
   color: var(--muted);
   margin-left: auto;
-  background: rgba(56, 189, 248, 0.16);
+  background: rgba(59, 130, 246, 0.1);
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: 999px;
 }
 
 .thinking-content {
   padding: 16px;
   border-top: 1px solid var(--border);
-  background: var(--surface-3);
+  background: #F8FAFC;
 }
 
 .thinking-content pre {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
 }
 
 /* 思考动画 */
@@ -2405,7 +3048,7 @@ const handleQuickAction = async (action: any) => {
 
 .thinking-dots .dot {
   animation: thinking-bounce 1.4s infinite ease-in-out both;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .thinking-dots .dot:nth-child(1) {
@@ -2436,10 +3079,11 @@ const handleQuickAction = async (action: any) => {
 
 /* 支付密码弹窗样式 */
 .payment-dialog :deep(.el-dialog__header) {
-  background: var(--surface-2);
+  background: white;
   border-bottom: 1px solid var(--border);
   padding: 20px 24px;
   margin-right: 0;
+  border-radius: 16px 16px 0 0;
 }
 
 .payment-dialog :deep(.el-dialog__title) {
@@ -2450,13 +3094,14 @@ const handleQuickAction = async (action: any) => {
 
 .payment-dialog :deep(.el-dialog__body) {
   padding: 24px;
-  background: var(--surface);
+  background: white;
 }
 
 .payment-dialog :deep(.el-dialog__footer) {
-  background: var(--surface-2);
+  background: #F8FAFC;
   border-top: 1px solid var(--border);
   padding: 16px 24px;
+  border-radius: 0 0 16px 16px;
 }
 
 .payment-info {
@@ -2488,7 +3133,7 @@ const handleQuickAction = async (action: any) => {
 .amount-value {
   font-size: 36px;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--text);
 }
 
 .password-input-section {
@@ -2512,20 +3157,21 @@ const handleQuickAction = async (action: any) => {
 .password-dot {
   width: 48px;
   height: 48px;
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
   color: var(--text);
-  background: var(--surface-3);
+  background: #F8FAFC;
   transition: all 0.2s ease;
 }
 
 .password-dot.filled {
-  border-color: var(--accent);
-  background: rgba(56, 189, 248, 0.1);
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.05);
+  color: var(--primary);
 }
 
 .password-input {
@@ -2550,18 +3196,21 @@ const handleQuickAction = async (action: any) => {
   font-size: 24px;
   font-weight: 600;
   color: var(--text);
-  background: var(--surface-3);
+  background: white;
   border: 1px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .numpad-key:hover:not(.disabled) {
-  background: var(--surface-2);
-  border-color: var(--accent);
+  background: #F8FAFC;
+  border-color: var(--primary);
+  color: var(--primary);
   transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
 }
 
 .numpad-key:active:not(.disabled) {
@@ -2572,5 +3221,203 @@ const handleQuickAction = async (action: any) => {
   cursor: default;
   background: transparent;
   border-color: transparent;
+}
+
+@media (max-width: 1180px) {
+  .chat-container {
+    padding: 14px;
+  }
+
+  .sidebar {
+    width: 280px;
+  }
+
+  .chat-header-actions {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .chat-container {
+    padding: 12px;
+  }
+
+  .sidebar-toggle,
+  .sidebar-collapse {
+    display: inline-flex;
+  }
+
+  .chat-shell {
+    border-radius: 22px;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: min(84vw, 320px);
+    z-index: 26;
+    background: rgba(255, 252, 247, 0.92);
+    border-right: none;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    backdrop-filter: blur(18px);
+    transform: translateX(-120%);
+    transition: transform 0.28s ease;
+    box-shadow: var(--shadow-lg);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .chat-shell.sidebar-collapsed .sidebar {
+    width: min(84vw, 320px);
+  }
+
+  .chat-shell.sidebar-collapsed .sidebar > * {
+    opacity: 1;
+  }
+
+  .chat-main {
+    border-radius: 0;
+  }
+
+  .chat-header {
+    padding: 16px 18px;
+  }
+
+  .chat-header h3 {
+    font-size: 18px;
+  }
+
+  .message-list,
+  .selected-files,
+  .input-area {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .message-content {
+    max-width: calc(100% - 54px);
+  }
+}
+
+@media (max-width: 640px) {
+  .conversation-empty {
+    padding: 22px 18px;
+    border-radius: 22px;
+  }
+
+  .conversation-empty h4 {
+    font-size: 22px;
+  }
+
+  .empty-suggestions {
+    flex-direction: column;
+  }
+
+  .suggestion-chip {
+    width: 100%;
+    text-align: left;
+  }
+
+  .message-list {
+    padding-top: 18px;
+  }
+
+  .message-item {
+    margin-bottom: 16px;
+  }
+
+  .message-avatar {
+    width: 34px;
+    height: 34px;
+    margin: 0 8px;
+  }
+
+  .selected-files {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .input-area {
+    padding: 14px 12px 18px;
+  }
+
+  .input-area-inner {
+    gap: 8px;
+    padding: 10px;
+    border-radius: 20px;
+  }
+
+  .upload-btn :deep(.el-button),
+  .order-btn,
+  .input-area :deep(.el-button--primary) {
+    height: 42px;
+  }
+
+  .input-area :deep(.el-button--primary) {
+    padding: 0 16px;
+  }
+
+  .payment-dialog :deep(.el-dialog) {
+    width: calc(100vw - 24px) !important;
+    margin-top: 8vh !important;
+  }
+
+  .password-dots {
+    gap: 8px;
+  }
+
+  .password-dot {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (max-height: 860px) {
+  .chat-container {
+    padding: 10px;
+  }
+
+  .sidebar-header {
+    padding-top: 16px;
+    padding-bottom: 10px;
+  }
+
+  .sidebar-title p {
+    display: none;
+  }
+
+  .sidebar-toolbar {
+    padding-bottom: 10px;
+  }
+
+  .chat-header {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .message-list {
+    padding-top: 14px;
+    padding-bottom: 12px;
+  }
+
+  .conversation-empty {
+    padding: 20px;
+  }
+
+  .input-area {
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .input-area-inner {
+    padding: 8px;
+  }
 }
 </style>

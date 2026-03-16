@@ -13,29 +13,40 @@ class APIClient {
       }
     })
 
-    // 请求拦截器
     this.client.interceptors.request.use(
-      (config) => {
+      config => {
         const authStore = useAuthStore()
-        if (authStore.token) {
+        const requestUrl = config.url || ''
+        const isAuthEndpoint =
+          requestUrl.includes('/auth/login') ||
+          requestUrl.includes('/auth/register') ||
+          requestUrl.includes('/auth/refresh')
+
+        if (!isAuthEndpoint && authStore.token) {
           config.headers.Authorization = `Bearer ${authStore.token}`
         }
+
         return config
       },
-      (error) => {
-        return Promise.reject(error)
-      }
+      error => Promise.reject(error)
     )
 
-    // 响应拦截器
     this.client.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        if (error.response?.status === 401) {
+      response => response,
+      async error => {
+        const status = error.response?.status
+        const requestUrl = error.config?.url || ''
+        const isAuthEndpoint =
+          requestUrl.includes('/auth/login') ||
+          requestUrl.includes('/auth/register') ||
+          requestUrl.includes('/auth/refresh')
+
+        if (status === 401 && !isAuthEndpoint) {
           const authStore = useAuthStore()
           authStore.logout()
           window.location.href = '/login'
         }
+
         return Promise.reject(error)
       }
     )
@@ -69,7 +80,7 @@ class APIClient {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
-      onUploadProgress: (progressEvent) => {
+      onUploadProgress: progressEvent => {
         if (onProgress && progressEvent.total) {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
           onProgress(progress)

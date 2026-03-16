@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { apiClient } from '@/api/client'
 
 interface User {
@@ -31,28 +31,27 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(loginData: LoginData) {
     try {
       const response = await apiClient.post<AuthToken>('/auth/login', loginData)
-      
+
       token.value = response.access_token
       refreshToken.value = response.refresh_token
-      
+
       localStorage.setItem('access_token', response.access_token)
       localStorage.setItem('refresh_token', response.refresh_token)
-      
-      await fetchUser()
-      
-      return true
+
+      const currentUser = await fetchUser()
+      return !!currentUser
     } catch (error) {
-      console.error('登录失败:', error)
+      console.error('Login failed:', error)
       return false
     }
   }
 
-  async function register(userData: any) {
+  async function register(userData: { username: string; password: string }) {
     try {
       await apiClient.post('/auth/register', userData)
       return true
     } catch (error) {
-      console.error('注册失败:', error)
+      console.error('Register failed:', error)
       return false
     }
   }
@@ -60,9 +59,11 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUser() {
     try {
       user.value = await apiClient.get<User>('/auth/me')
+      return user.value
     } catch (error) {
-      console.error('获取用户信息失败:', error)
+      console.error('Fetch current user failed:', error)
       logout()
+      return null
     }
   }
 
@@ -70,7 +71,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     refreshToken.value = null
     user.value = null
-    
+
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
   }
@@ -85,13 +86,13 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await apiClient.post<AuthToken>('/auth/refresh', {
         refresh_token: refreshToken.value
       })
-      
+
       token.value = response.access_token
       localStorage.setItem('access_token', response.access_token)
-      
+
       return true
     } catch (error) {
-      console.error('刷新令牌失败:', error)
+      console.error('Refresh access token failed:', error)
       logout()
       return false
     }

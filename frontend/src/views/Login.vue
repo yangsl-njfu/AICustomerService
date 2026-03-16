@@ -1,145 +1,501 @@
 <template>
-  <div class="login-container">
-    <el-card class="login-card">
-      <template #header>
-        <h2>AI客服系统</h2>
-      </template>
-      
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="form.username" placeholder="请输入用户名" />
-        </el-form-item>
-        
-        <el-form-item label="密码" prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            @keyup.enter="handleLogin"
-          />
-        </el-form-item>
-        
-        <el-form-item>
-          <el-button type="primary" :loading="loading" style="width: 100%" @click="handleLogin">
-            登录
-          </el-button>
-        </el-form-item>
-        
-        <el-form-item>
-          <el-button text style="width: 100%" @click="handleRegister">
-            还没有账号？去注册
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+  <div class="auth-page">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <div class="auth-shell">
+      <section class="auth-story">
+        <div class="story-header">
+          <span class="eyebrow">AI 智能客服平台</span>
+          <h1>让每一次对话都创造价值</h1>
+          <p>
+            融合人工智能与专业服务，为您的业务提供 24/7 全天候智能客服解决方案。
+            从商品咨询到售后支持，一站式解决客户需求。
+          </p>
+        </div>
+
+        <div class="story-grid">
+          <article class="story-card">
+            <div class="story-icon">
+              <el-icon><ChatDotRound /></el-icon>
+            </div>
+            <strong>智能对话</strong>
+            <p>基于大语言模型的智能客服，理解客户需求，提供专业解答</p>
+          </article>
+          <article class="story-card">
+            <div class="story-icon">
+              <el-icon><ShoppingBag /></el-icon>
+            </div>
+            <strong>商品推荐</strong>
+            <p>精准分析用户偏好，智能推荐最适合的商品方案</p>
+          </article>
+          <article class="story-card">
+            <div class="story-icon">
+              <el-icon><Service /></el-icon>
+            </div>
+            <strong>全程服务</strong>
+            <p>从咨询到售后，全流程跟踪，确保客户满意度</p>
+          </article>
+        </div>
+      </section>
+
+      <div class="auth-card-wrapper">
+        <div class="auth-card">
+          <div class="card-head">
+            <span class="eyebrow">欢迎回来</span>
+            <h2>登录账号</h2>
+            <p>继续使用 AI 客服系统，享受智能服务体验</p>
+          </div>
+
+          <form class="auth-form" @submit.prevent="handleLogin">
+            <div class="form-group">
+              <label>用户名</label>
+              <input
+                v-model.trim="form.username"
+                type="text"
+                placeholder="请输入用户名"
+                autocomplete="username"
+                @keydown.enter.prevent="handleLogin"
+              />
+            </div>
+
+            <div class="form-group">
+              <label>密码</label>
+              <input
+                v-model="form.password"
+                type="password"
+                placeholder="请输入密码"
+                autocomplete="current-password"
+                @keydown.enter.prevent="handleLogin"
+              />
+            </div>
+
+            <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+
+            <button
+              type="submit"
+              class="submit-btn"
+              :disabled="loading"
+              :class="{ loading: loading }"
+            >
+              <span v-if="!loading">登录</span>
+              <span v-else class="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            </button>
+
+            <div class="helper-row">
+              <span>还没有账号？</span>
+              <button type="button" class="link-btn" @click="handleRegister">
+                立即注册
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
+import { ChatDotRound, ShoppingBag, Service } from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-const formRef = ref()
 const loading = ref(false)
+const errorMessage = ref('')
 
 const form = reactive({
   username: '',
   password: ''
 })
 
-const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
-}
+onMounted(() => {
+  authStore.logout()
+})
 
-const handleLogin = async () => {
-  await formRef.value.validate(async (valid: boolean) => {
-    if (!valid) return
+async function handleLogin() {
+  if (loading.value) return
 
-    loading.value = true
-    const success = await authStore.login(form)
-    loading.value = false
+  const username = form.username.trim()
+  const password = form.password
+
+  if (!username) {
+    errorMessage.value = '请输入用户名'
+    ElMessage.warning('请输入用户名')
+    return
+  }
+
+  if (!password) {
+    errorMessage.value = '请输入密码'
+    ElMessage.warning('请输入密码')
+    return
+  }
+
+  errorMessage.value = ''
+  loading.value = true
+
+  try {
+    const success = await authStore.login({
+      username,
+      password
+    })
 
     if (success) {
       ElMessage.success('登录成功')
       router.push('/')
-    } else {
-      ElMessage.error('登录失败，请检查用户名和密码')
+      return
     }
-  })
+
+    errorMessage.value = '登录失败，请检查用户名和密码'
+    ElMessage.error('登录失败，请检查用户名和密码')
+  } finally {
+    loading.value = false
+  }
 }
 
-const handleRegister = () => {
+function handleRegister() {
   router.push('/register')
 }
 </script>
 
 <style scoped>
-.login-container {
+.auth-page {
+  position: relative;
+  min-height: 100vh;
+  padding: 20px;
+  overflow: hidden;
   display: flex;
-  justify-content: center;
   align-items: center;
-  width: 100vw;
-  height: 100vh;
-  background: var(--bg);
+  justify-content: center;
 }
 
-.login-card {
+.ambient {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+}
+
+.ambient-left {
+  top: -100px;
+  left: -80px;
   width: 400px;
+  height: 400px;
+  background: rgba(124, 58, 237, 0.15);
+  animation: float 20s ease-in-out infinite;
+}
+
+.ambient-right {
+  right: -100px;
+  bottom: -100px;
+  width: 350px;
+  height: 350px;
+  background: rgba(6, 182, 212, 0.12);
+  animation: float 25s ease-in-out infinite reverse;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+.auth-shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 420px);
+  gap: 24px;
+}
+
+/* 左侧故事区域 */
+.auth-story {
+  padding: 48px;
+  border-radius: var(--radius-xl);
+  background: var(--hero-gradient);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+}
+
+.story-header {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-story :deep(.eyebrow) {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.auth-story :deep(.eyebrow)::before {
+  background: var(--accent);
+}
+
+.auth-story h1 {
+  margin: 0;
+  max-width: 600px;
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.auth-story > .story-header > p {
+  max-width: 520px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.story-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.story-card {
+  padding: 24px 20px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.story-card:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.story-icon {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.story-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.story-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 右侧登录卡片 */
+.auth-card-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.auth-card {
+  width: 100%;
+  padding: 40px;
+  border-radius: var(--radius-xl);
   background: var(--surface);
-  border-radius: 16px;
   border: 1px solid var(--border);
+  backdrop-filter: blur(20px);
   box-shadow: var(--shadow);
 }
 
-.login-card h2 {
-  text-align: center;
+.card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.card-head h2 {
   margin: 0;
-  color: var(--text);
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: 0.4px;
+  color: var(--text);
 }
 
-.login-card :deep(.el-card__header) {
-  border-bottom: 1px solid var(--border);
+.card-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.login-card :deep(.el-card__body) {
+/* 表单样式 */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-group input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  transition: all 0.2s ease;
 }
 
-.login-card :deep(.el-form-item__label) {
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px var(--primary-lighter);
+}
+
+.form-group input::placeholder {
   color: var(--muted);
 }
 
-.login-card :deep(.el-input__wrapper) {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  box-shadow: none;
+.error-text {
+  margin: -8px 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.login-card :deep(.el-input__inner) {
-  color: var(--text);
-}
-
-.login-card :deep(.el-input__inner::placeholder) {
-  color: rgba(148, 163, 184, 0.6);
-}
-
-.login-card :deep(.el-button--primary) {
-  background: var(--primary);
-  border: 1px solid rgba(37, 99, 235, 0.35);
-  color: #ffffff;
+.submit-btn {
+  width: 100%;
+  height: 48px;
+  margin-top: 8px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--primary-gradient);
+  color: #fff;
+  font-size: 15px;
   font-weight: 600;
-  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: var(--shadow);
 }
 
-.login-card :deep(.el-button.is-text) {
-  color: var(--accent);
+.submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.submit-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+}
+
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  animation: bounce 1.4s ease-in-out infinite both;
+}
+
+.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+.helper-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.link-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.link-btn:hover {
+  color: var(--primary-dark);
+}
+
+/* 响应式 */
+@media (max-width: 1080px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+  }
+
+  .auth-story {
+    display: none;
+  }
+
+  .auth-card-wrapper {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-page {
+    padding: 16px;
+  }
+
+  .auth-card {
+    padding: 28px 24px;
+  }
+
+  .card-head h2 {
+    font-size: 24px;
+  }
 }
 </style>

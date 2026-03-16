@@ -1,202 +1,251 @@
-"""
-文件服务
-"""
+"""File storage and secure lookup helpers."""
+from __future__ import annotations
+
+import asyncio
+import json
 import os
 import uuid
-import asyncio
-from typing import Optional
 from pathlib import Path
-from fastapi import UploadFile
+from typing import Optional
+
 import aiofiles
-from pypdf import PdfReader
-from docx import Document as DocxDocument
+from fastapi import UploadFile
 from PIL import Image
+from docx import Document as DocxDocument
+from pypdf import PdfReader
+
 from config import settings
 from .paddleocr_service import vision_llm_service
 
 
 class FileService:
-    """文件服务类"""
-    
+    """Manage uploaded files and server-side file ownership metadata."""
+
+    IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "bmp", "webp"}
+
     def __init__(self):
-        # 确保上传目录存在
-        Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
-        # 存储待处理的图片分析任务
+        self.upload_dir = Path(settings.UPLOAD_DIR).resolve()
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
         self._pending_analysis: dict[str, asyncio.Task] = {}
-    
+
     def _get_file_extension(self, filename: str) -> str:
-        """获取文件扩展名"""
-        return filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-    
+        return filename.rsplit(".", 1)[1].lower() if "." in filename else ""
+
     def _is_allowed_file(self, filename: str) -> bool:
-        """检查文件类型是否允许"""
-        ext = self._get_file_extension(filename)
-        return ext in settings.allowed_extensions_list
-    
+        return self._get_file_extension(filename) in settings.allowed_extensions_list
+
     def _is_image_file(self, filename: str) -> bool:
-        """检查是否为图片文件"""
-        ext = self._get_file_extension(filename)
-        return ext in ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp']
-    
-    async def upload_file(
-        self,
-        file: UploadFile,
-        user_id: str,
-        session_id: str
-    ) -> dict:
-        """上传文件"""
-        print(f"[调试] upload_file 被调用: {file.filename}")
-        # 检查文件类型
+        return self._get_file_extension(filename) in self.IMAGE_EXTENSIONS
+
+    def _build_storage_path(self, file_id: str, ext: str) -> Path:
+        return self.upload_dir / f"{file_id}.{ext}"
+
+    def _metadata_path(self, file_id: str) -> Path:
+        return self.upload_dir / f"{file_id}.meta.json"
+
+    def _analysis_path(self, file_id: str) -> Path:
+        return self.upload_dir / f"{file_id}.analysis.json"
+
+    async def _write_json(self, path: Path, payload: dict) -> None:
+        async with aiofiles.open(path, "w", encoding="utf-8") as handle:
+            await handle.write(json.dumps(payload, ensure_ascii=False))
+
+    async def _read_json(self, path: Path) -> Optional[dict]:
+        if not path.exists():
+            return None
+        try:
+            async with aiofiles.open(path, "r", encoding="utf-8") as handle:
+                return json.loads(await handle.read())
+        except Exception:
+            return None
+
+    async def upload_file(self, file: UploadFile, user_id: str, session_id: str) -> dict:
         if not self._is_allowed_file(file.filename):
-            raise ValueError(f"不支持的文件类型。允许的类型：{', '.join(settings.allowed_extensions_list)}")
-        
-        # 检查文件大小
-        file.file.seek(0, 2)  # 移动到文件末尾
+            raise ValueError(f"Unsupported file type. Allowed: {', '.join(settings.allowed_extensions_list)}")
+
+        file.file.seek(0, os.SEEK_END)
         file_size = file.file.tell()
-        file.file.seek(0)  # 重置到文件开头
-        
+        file.file.seek(0)
         if file_size > settings.MAX_FILE_SIZE:
-            raise ValueError(f"文件大小超过限制（最大{settings.MAX_FILE_SIZE / 1024 / 1024}MB）")
-        
-        # 生成唯一文件名
+            max_mb = settings.MAX_FILE_SIZE / 1024 / 1024
+            raise ValueError(f"File exceeds size limit ({max_mb:.0f}MB)")
+
         file_id = str(uuid.uuid4())
         ext = self._get_file_extension(file.filename)
-        new_filename = f"{file_id}.{ext}"
-        file_path = os.path.join(settings.UPLOAD_DIR, new_filename)
-        
-        # 保存文件
-        async with aiofiles.open(file_path, 'wb') as f:
-            content = await file.read()
-            await f.write(content)
-        
-        # 初始化返回结果
+        storage_path = self._build_storage_path(file_id, ext)
+
+        async with aiofiles.open(storage_path, "wb") as handle:
+            await handle.write(await file.read())
+
+        metadata = {
+            "file_id": file_id,
+            "user_id": user_id,
+            "session_id": session_id or None,
+            "file_name": file.filename,
+            "file_size": file_size,
+            "file_type": ext,
+            "mime_type": file.content_type,
+            "storage_path": str(storage_path),
+        }
+        await self._write_json(self._metadata_path(file_id), metadata)
+
         result = {
             "file_id": file_id,
             "file_name": file.filename,
             "file_size": file_size,
             "file_type": ext,
-            "file_path": file_path,
             "mime_type": file.content_type,
-            "extracted_text": None,  # 提取的文字内容
-            "ocr_used": False,       # 是否使用了 OCR
-            "analysis_pending": False  # 是否正在异步分析中
+            "extracted_text": None,
+            "ocr_used": False,
+            "analysis_pending": False,
         }
-        
-        # 如果是图片文件且视觉LLM可用，启动异步分析任务
-        is_image = self._is_image_file(file.filename)
-        is_available = vision_llm_service.is_available()
-        
-        if is_image and is_available:
-            # 标记为分析中，立即返回，不等待分析完成
+
+        if self._is_image_file(file.filename) and vision_llm_service.is_available():
             result["analysis_pending"] = True
-            # 启动后台任务进行图片分析
-            asyncio.create_task(self._analyze_image_async(file_id, file_path))
-            print(f"[视觉LLM] 图片分析已启动异步任务: {file_id}")
-        elif is_image and not is_available:
-            print(f"[视觉LLM] 视觉LLM服务不可用，跳过图片分析")
-        
+            self._pending_analysis[file_id] = asyncio.create_task(self._analyze_image_async(file_id))
+
         return result
-    
-    async def _analyze_image_async(self, file_id: str, file_path: str):
-        """异步分析图片（后台任务）"""
+
+    async def _analyze_image_async(self, file_id: str) -> None:
         try:
-            # 读取图片数据
-            async with aiofiles.open(file_path, 'rb') as f:
-                image_data = await f.read()
-            
-            # 分析图片意图和内容
+            metadata = await self.get_file_metadata(file_id)
+            if not metadata:
+                return
+
+            file_path = Path(metadata["storage_path"])
+            async with aiofiles.open(file_path, "rb") as handle:
+                image_data = await handle.read()
+
             analysis = await vision_llm_service.analyze_image_intent(image_data)
-            
-            # 将分析结果保存到文件（可以通过另一个API获取）
-            analysis_result = {
+            payload = {
                 "file_id": file_id,
                 "extracted_text": analysis.get("extracted_text", ""),
                 "ocr_used": True,
-                "image_intent": analysis.get("intent", "其他"),
+                "image_intent": analysis.get("intent", "other"),
                 "image_description": analysis.get("description", ""),
                 "image_reasoning": analysis.get("reasoning", ""),
-                "confidence": analysis.get("confidence", 0)
+                "confidence": analysis.get("confidence", 0),
             }
-            
-            # 保存分析结果到临时文件
-            analysis_path = f"{file_path}.analysis.json"
-            import json
-            async with aiofiles.open(analysis_path, 'w', encoding='utf-8') as f:
-                await f.write(json.dumps(analysis_result, ensure_ascii=False))
-            
-            print(f"[视觉LLM] 异步分析完成: {file_id}, 意图: {analysis_result['image_intent']}")
-        except Exception as e:
-            print(f"[视觉LLM] 异步分析失败: {e}")
-    
-    async def get_image_analysis(self, file_id: str) -> Optional[dict]:
-        """获取图片分析结果"""
-        # 查找分析结果文件
-        for filename in os.listdir(settings.UPLOAD_DIR):
-            if filename.startswith(file_id) and filename.endswith('.analysis.json'):
-                analysis_path = os.path.join(settings.UPLOAD_DIR, filename)
-                try:
-                    import json
-                    async with aiofiles.open(analysis_path, 'r', encoding='utf-8') as f:
-                        content = await f.read()
-                        return json.loads(content)
-                except Exception as e:
-                    print(f"读取分析结果失败: {e}")
-                    return None
+            await self._write_json(self._analysis_path(file_id), payload)
+        except Exception as exc:
+            print(f"Image analysis failed for {file_id}: {exc}")
+        finally:
+            self._pending_analysis.pop(file_id, None)
+
+    async def get_file_metadata(self, file_id: str) -> Optional[dict]:
+        metadata = await self._read_json(self._metadata_path(file_id))
+        if metadata:
+            return metadata
+
+        # Backward compatibility for files uploaded before metadata sidecars existed.
+        for candidate in self.upload_dir.iterdir():
+            if candidate.is_file() and candidate.name.startswith(f"{file_id}.") and not candidate.name.endswith(".json"):
+                return {
+                    "file_id": file_id,
+                    "user_id": None,
+                    "session_id": None,
+                    "file_name": candidate.name,
+                    "file_size": candidate.stat().st_size,
+                    "file_type": candidate.suffix.lstrip("."),
+                    "mime_type": None,
+                    "storage_path": str(candidate.resolve()),
+                }
         return None
-    
-    async def get_file(self, file_id: str) -> Optional[bytes]:
-        """获取文件内容"""
-        # 查找文件
-        for filename in os.listdir(settings.UPLOAD_DIR):
-            if filename.startswith(file_id):
-                file_path = os.path.join(settings.UPLOAD_DIR, filename)
-                async with aiofiles.open(file_path, 'rb') as f:
-                    return await f.read()
-        return None
-    
+
+    async def get_owned_file_metadata(
+        self,
+        file_id: str,
+        user_id: str,
+        session_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        metadata = await self.get_file_metadata(file_id)
+        if not metadata:
+            return None
+        if metadata.get("user_id") and metadata["user_id"] != user_id:
+            return None
+        stored_session_id = metadata.get("session_id")
+        if session_id and stored_session_id and stored_session_id != session_id:
+            return None
+        return metadata
+
+    async def resolve_attachment_reference(
+        self,
+        file_id: str,
+        user_id: str,
+        session_id: Optional[str] = None,
+    ) -> dict:
+        metadata = await self.get_owned_file_metadata(file_id, user_id, session_id=session_id)
+        if not metadata:
+            raise ValueError(f"Attachment {file_id} was not found for the current user/session")
+
+        return {
+            "file_id": metadata["file_id"],
+            "file_name": metadata.get("file_name") or file_id,
+            "file_type": metadata.get("file_type") or "",
+            "file_size": metadata.get("file_size") or 0,
+            "mime_type": metadata.get("mime_type"),
+            "file_path": metadata["storage_path"],
+        }
+
+    async def get_image_analysis(
+        self,
+        file_id: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        if user_id:
+            metadata = await self.get_owned_file_metadata(file_id, user_id, session_id=session_id)
+            if not metadata:
+                return None
+        return await self._read_json(self._analysis_path(file_id))
+
+    async def get_file(
+        self,
+        file_id: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> Optional[bytes]:
+        metadata = await (
+            self.get_owned_file_metadata(file_id, user_id, session_id=session_id)
+            if user_id
+            else self.get_file_metadata(file_id)
+        )
+        if not metadata:
+            return None
+        async with aiofiles.open(metadata["storage_path"], "rb") as handle:
+            return await handle.read()
+
     def extract_text(self, file_path: str) -> str:
-        """从文件提取文本"""
         ext = self._get_file_extension(file_path)
-        
         try:
-            if ext == 'pdf':
+            if ext == "pdf":
                 return self._extract_pdf_text(file_path)
-            elif ext in ['doc', 'docx']:
+            if ext in {"doc", "docx"}:
                 return self._extract_docx_text(file_path)
-            elif ext == 'txt':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-            else:
-                return ""
-        except Exception as e:
-            print(f"提取文本失败：{e}")
+            if ext == "txt":
+                with open(file_path, "r", encoding="utf-8") as handle:
+                    return handle.read()
             return ""
-    
+        except Exception as exc:
+            print(f"Text extraction failed: {exc}")
+            return ""
+
     def _extract_pdf_text(self, file_path: str) -> str:
-        """从PDF提取文本"""
         reader = PdfReader(file_path)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-        return text
-    
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+
     def _extract_docx_text(self, file_path: str) -> str:
-        """从DOCX提取文本"""
-        doc = DocxDocument(file_path)
-        text = ""
-        for paragraph in doc.paragraphs:
-            text += paragraph.text + "\n"
-        return text
-    
+        document = DocxDocument(file_path)
+        return "\n".join(paragraph.text for paragraph in document.paragraphs)
+
     def analyze_image(self, file_path: str) -> dict:
-        """分析图片"""
         try:
-            img = Image.open(file_path)
+            image = Image.open(file_path)
             return {
-                "width": img.width,
-                "height": img.height,
-                "format": img.format,
-                "mode": img.mode
+                "width": image.width,
+                "height": image.height,
+                "format": image.format,
+                "mode": image.mode,
             }
-        except Exception as e:
-            return {"error": str(e)}
+        except Exception as exc:
+            return {"error": str(exc)}

@@ -1,86 +1,111 @@
-"""
-附件服务
-"""
-from typing import List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+"""Attachment persistence and normalization helpers."""
+from __future__ import annotations
+
 import uuid
-import os
+from typing import Any, Dict, Iterable, List
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Attachment
-from config import settings
+from .file_service import FileService
 
 
 class AttachmentService:
-    """附件服务类"""
+    """Resolve attachment references server-side before persistence or AI use."""
+
+    def __init__(self):
+        self.file_service = FileService()
+
+    async def normalize_attachments(
+        self,
+        attachments: Iterable[Any],
+        user_id: str,
+        session_id: str,
+    ) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+
+        for attachment in attachments:
+            if hasattr(attachment, "model_dump"):
+                payload = attachment.model_dump()
+            elif hasattr(attachment, "dict"):
+                payload = attachment.dict()
+            else:
+                payload = dict(attachment)
+
+            file_id = payload.get("file_id")
+            if not file_id:
+                raise ValueError("Attachment file_id is required")
+
+            resolved = await self.file_service.resolve_attachment_reference(
+                file_id=file_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            resolved["file_name"] = payload.get("file_name") or resolved["file_name"]
+            resolved["file_type"] = payload.get("file_type") or resolved["file_type"]
+            resolved["file_size"] = payload.get("file_size") or resolved["file_size"]
+            resolved["extracted_text"] = payload.get("extracted_text")
+            resolved["ocr_used"] = bool(payload.get("ocr_used", False))
+            resolved["image_intent"] = payload.get("image_intent")
+            resolved["image_description"] = payload.get("image_description")
+            normalized.append(resolved)
+
+        return normalized
 
     async def save_attachments(
         self,
         db: AsyncSession,
         message_id: str,
-        attachments: List
+        attachments: Iterable[Any],
+        user_id: str,
+        session_id: str,
+        normalized_attachments: List[Dict[str, Any]] | None = None,
     ) -> List[Attachment]:
-        """保存附件"""
-        saved_attachments = []
+        normalized = normalized_attachments or await self.normalize_attachments(
+            attachments,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        saved: List[Attachment] = []
 
-        for att in attachments:
-            # 支持 dict 或 Pydantic 对象
-            if hasattr(att, 'dict'):
-                # Pydantic 对象
-                att_data = att.dict()
-            elif hasattr(att, 'model_dump'):
-                # Pydantic v2
-                att_data = att.model_dump()
-            else:
-                # dict
-                att_data = att
-
-            # 使用前端传递的文件路径，如果没有则重新构建
-            file_id = att_data.get('file_id', str(uuid.uuid4()))
-            file_type = att_data.get('file_type', '')
-            file_path = att_data.get('file_path') or os.path.join(settings.UPLOAD_DIR, f"{file_id}.{file_type}")
-
+        for payload in normalized:
             attachment = Attachment(
                 id=str(uuid.uuid4()),
                 message_id=message_id,
-                file_name=att_data.get('file_name', ''),
-                file_type=file_type,
-                file_size=att_data.get('file_size', 0),
-                file_path=file_path,
-                mime_type=self._get_mime_type(file_type)
+                file_name=payload["file_name"],
+                file_type=payload["file_type"],
+                file_size=payload["file_size"],
+                file_path=payload["file_path"],
+                mime_type=self._get_mime_type(payload["file_type"], payload.get("mime_type")),
             )
             db.add(attachment)
-            saved_attachments.append(attachment)
+            saved.append(attachment)
 
         await db.commit()
-        for att in saved_attachments:
-            await db.refresh(att)
+        for attachment in saved:
+            await db.refresh(attachment)
 
-        return saved_attachments
+        return saved
 
-    def _get_mime_type(self, file_type: str) -> str:
-        """根据文件类型获取 MIME 类型"""
+    def _get_mime_type(self, file_type: str, fallback: str | None = None) -> str:
         mime_types = {
-            'pdf': 'application/pdf',
-            'doc': 'application/msword',
-            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'txt': 'text/plain',
-            'md': 'text/markdown',
-            'png': 'image/png',
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
+            "pdf": "application/pdf",
+            "doc": "application/msword",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "txt": "text/plain",
+            "md": "text/markdown",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "gif": "image/gif",
+            "bmp": "image/bmp",
+            "webp": "image/webp",
         }
-        return mime_types.get(file_type.lower(), 'application/octet-stream')
+        return fallback or mime_types.get((file_type or "").lower(), "application/octet-stream")
 
-    async def get_message_attachments(
-        self,
-        db: AsyncSession,
-        message_id: str
-    ) -> List[Attachment]:
-        """获取消息的附件"""
+    async def get_message_attachments(self, db: AsyncSession, message_id: str) -> List[Attachment]:
         result = await db.execute(
-            select(Attachment)
-            .where(Attachment.message_id == message_id)
-            .order_by(Attachment.created_at)
+            select(Attachment).where(Attachment.message_id == message_id).order_by(Attachment.created_at)
         )
         return result.scalars().all()

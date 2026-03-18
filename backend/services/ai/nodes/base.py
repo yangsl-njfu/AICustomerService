@@ -1,5 +1,5 @@
 """
-Base node primitives for AI workflows.
+AI 工作流节点基类。
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from ..state import ConversationState
 
 
 class BaseNode(ABC):
-    """Abstract workflow node."""
+    """工作流抽象节点。"""
 
     def __init__(self, llm=None, runtime=None):
         self.llm = llm
@@ -17,7 +17,7 @@ class BaseNode(ABC):
 
     @abstractmethod
     async def execute(self, state: ConversationState) -> ConversationState:
-        """Execute node logic."""
+        """执行当前节点逻辑。"""
 
     def validate_state(self, state: ConversationState) -> bool:
         return True

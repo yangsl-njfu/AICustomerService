@@ -1,4 +1,4 @@
-"""Handler registry for workflow routes."""
+"""工作流路由处理器注册表。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ class HandlerRegistration:
 
 
 class HandlerRegistry:
-    """Stores route handlers used by the workflow kernel."""
+    """保存工作流内核使用的路由处理器。"""
 
     def __init__(self):
         self._handlers: Dict[str, HandlerRegistration] = {}

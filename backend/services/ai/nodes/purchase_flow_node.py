@@ -280,7 +280,7 @@ class PurchaseFlowNode(BaseNode):
         coupon_id = flow_data.get("coupon_id")
         final_price = flow_data.get("final_price")
 
-        # 如果没有 product 数据，根据 product_id 获取
+        # 如果当前没有商品详情，就根据商品编号补查一次。
         if not product and product_id:
             from database.connection import get_db_context
             from services.product_service import ProductService
@@ -363,7 +363,7 @@ class PurchaseFlowNode(BaseNode):
         coupon = flow_data.get("coupon")
         address_id = flow_data.get("address_id")
 
-        # 如果没有 product 数据，根据 product_id 获取
+        # 如果当前没有商品详情，就根据商品编号补查一次。
         if (not product or not product.get("title")) and product_id:
             from database.connection import get_db_context
             from services.product_service import ProductService
@@ -463,7 +463,7 @@ class PurchaseFlowNode(BaseNode):
         address_id = flow_data.get("address_id")
         final_price = flow_data.get("final_price", 0)
 
-        # 如果没有 product 数据，根据 product_id 获取
+        # 如果当前没有商品详情，就根据商品编号补查一次。
         if (not product or not product.get("id")) and product_id:
             from database.connection import get_db_context as _get_db
             from services.product_service import ProductService
@@ -480,7 +480,7 @@ class PurchaseFlowNode(BaseNode):
                     if not final_price:
                         final_price = product.get("price", 0)
 
-        # 如果没有 address 数据，根据 address_id 获取
+        # 如果当前没有地址详情，就根据地址编号补查一次。
         if (not address or not address.get("full_address")) and address_id:
             from database.connection import get_db_context as _get_db2
             from sqlalchemy import select
@@ -584,7 +584,7 @@ class PurchaseFlowNode(BaseNode):
 
 请输入6位数字支付密码完成支付："""
         
-        # 使用特殊的 action 类型来触发前端的支付弹框
+        # 通过特殊的动作类型触发前端支付弹窗。
         state["quick_actions"] = [
             {
                 "type": "payment_password",

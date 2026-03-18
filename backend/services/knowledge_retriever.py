@@ -442,19 +442,51 @@ class KnowledgeRetriever:
         self._build_bm25_index(collection_name)
         return all_doc_ids
 
-    async def delete_document(self, document_id: str, collection_name: str = "knowledge_base"):
-        if not self.available:
-            return
+    async def delete_documents(
+        self,
+        document_ids: List[str],
+        collection_name: str = "knowledge_base",
+    ) -> int:
+        """Delete multiple documents from a collection."""
+        if not self.available or not document_ids:
+            return 0
+
         collection = (
             self.knowledge_collection
             if collection_name == "knowledge_base"
             else self.product_collection
         )
         try:
-            collection.delete(ids=[document_id])
+            collection.delete(ids=document_ids)
+            self._build_bm25_index(collection_name)
+            return len(document_ids)
         except Exception as e:
-            logger.error(f"删除文档失败: {e}")
-        self._build_bm25_index(collection_name)
+            logger.error(f"批量删除文档失败: {e}")
+            return 0
+
+    async def delete_document(self, document_id: str, collection_name: str = "knowledge_base"):
+        await self.delete_documents([document_id], collection_name)
+
+    async def delete_by_metadata(
+        self,
+        filter_metadata: Dict,
+        collection_name: str = "knowledge_base",
+        limit: Optional[int] = None,
+    ) -> int:
+        """Delete all documents whose metadata matches the given filter."""
+        if not self.available:
+            return 0
+
+        collection = (
+            self.knowledge_collection
+            if collection_name == "knowledge_base"
+            else self.product_collection
+        )
+        results = collection.get(where=filter_metadata, limit=limit)
+        document_ids = results.get("ids", []) if results else []
+        if not document_ids:
+            return 0
+        return await self.delete_documents(document_ids, collection_name)
 
     async def update_document(
         self, document_id: str, content: str,

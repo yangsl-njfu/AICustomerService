@@ -52,6 +52,11 @@ async def test_get_context_returns_default_new_fields(cache: MemoryCache):
     assert ctx is not None
     assert ctx["intent_history"] == []
     assert ctx["conversation_summary"] == ""
+    assert ctx["last_quick_actions"] == []
+    assert ctx["active_task"] is None
+    assert ctx["task_stack"] == []
+    assert ctx["pending_question"] is None
+    assert ctx["pending_action"] is None
     # Original fields still present
     assert len(ctx["history"]) == 1
     assert ctx["last_intent"] == "问答"
@@ -75,6 +80,8 @@ async def test_get_context_returns_stored_new_fields(cache: MemoryCache):
     ctx = await cache.get_context("s1")
     assert ctx["intent_history"] == intent_history
     assert ctx["conversation_summary"] == "User asked about products."
+    assert ctx["last_quick_actions"] == []
+    assert ctx["task_stack"] == []
 
 
 # ── update_context with new fields ───────────────────────────────────
@@ -98,6 +105,44 @@ async def test_update_context_persists_conversation_summary(cache: MemoryCache):
 
     ctx = await cache.get_context("s3")
     assert ctx["conversation_summary"] == summary
+
+
+@pytest.mark.asyncio
+async def test_update_context_persists_last_quick_actions(cache: MemoryCache):
+    quick_actions = [{"type": "button", "label": "查看详情"}]
+    await cache.update_context("s3b", last_quick_actions=quick_actions)
+
+    ctx = await cache.get_context("s3b")
+    assert ctx["last_quick_actions"] == quick_actions
+
+
+@pytest.mark.asyncio
+async def test_update_context_persists_dialogue_state_fields(cache: MemoryCache):
+    active_task = {"id": "task-1", "intent": "推荐", "status": "awaiting_user"}
+    task_stack = [{"id": "task-0", "intent": "订单查询", "status": "suspended"}]
+    await cache.update_context(
+        "s3c",
+        active_task=active_task,
+        task_stack=task_stack,
+        pending_question="要继续吗？",
+        pending_action="answer_follow_up",
+    )
+
+    ctx = await cache.get_context("s3c")
+    assert ctx["active_task"] == active_task
+    assert ctx["task_stack"] == task_stack
+    assert ctx["pending_question"] == "要继续吗？"
+    assert ctx["pending_action"] == "answer_follow_up"
+
+
+@pytest.mark.asyncio
+async def test_update_context_can_clear_pending_fields(cache: MemoryCache):
+    await cache.update_context("s3d", pending_question="继续吗？", pending_action="answer_follow_up")
+    await cache.update_context("s3d", pending_question=None, pending_action=None)
+
+    ctx = await cache.get_context("s3d")
+    assert ctx["pending_question"] is None
+    assert ctx["pending_action"] is None
 
 
 @pytest.mark.asyncio

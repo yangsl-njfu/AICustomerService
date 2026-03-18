@@ -1,4 +1,4 @@
-"""Intent recognition node."""
+"""意图识别节点。"""
 from __future__ import annotations
 
 import hashlib
@@ -13,8 +13,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from config import settings
 
 from ..constants import (
+    CONTINUATION_DIALOGUE_ACTS,
     DEFAULT_INTENT_LABELS,
     DEFAULT_INTENT_RULES,
+    DIALOGUE_ACT_NEW_REQUEST,
+    DIALOGUE_ACT_RESUME_TASK,
     INTENT_DOCUMENT_ANALYSIS,
     INTENT_QA,
 )
@@ -46,7 +49,7 @@ def _find_fallback_intent(intent_history: List[dict], threshold: float) -> str |
 
 
 class IntentRecognitionNode(BaseNode):
-    """Rule-first intent classifier with runtime-configurable prompts and labels."""
+    """带运行时可配置提示词和标签的兜底意图分类器。"""
 
     _intent_cache: Dict[str, Dict[str, float | str]] = {}
     _cache_max_size = 1000
@@ -188,6 +191,46 @@ class IntentRecognitionNode(BaseNode):
         has_attachments = bool(state.get("attachments"))
         user_message = state["user_message"].strip()
         intent_history = state.get("intent_history") or []
+        last_intent = state.get("last_intent")
+        dialogue_act = state.get("dialogue_act")
+        task_stack = list(state.get("task_stack") or [])
+        rule_result = self._match_by_rules(user_message)
+        preselected_intent = state.get("intent")
+
+        if preselected_intent in valid_intents:
+            confidence = float(state.get("confidence") or state.get("understanding_confidence") or 0.9)
+            state["intent"] = preselected_intent
+            state["confidence"] = confidence
+            self._append_intent_history(state, intent_history, preselected_intent, confidence)
+            return state
+
+        if dialogue_act == DIALOGUE_ACT_RESUME_TASK and task_stack:
+            resumed_intent = task_stack[-1].get("intent")
+            if resumed_intent in valid_intents:
+                confidence = 0.9
+                state["intent"] = resumed_intent
+                state["confidence"] = confidence
+                self._append_intent_history(state, intent_history, resumed_intent, confidence)
+                return state
+
+        if (
+            state.get("continue_previous_task")
+            and last_intent in valid_intents
+            and dialogue_act in CONTINUATION_DIALOGUE_ACTS
+        ):
+            if rule_result and rule_result[0] in valid_intents and rule_result[0] != last_intent:
+                state["continue_previous_task"] = False
+                state["dialogue_act"] = DIALOGUE_ACT_NEW_REQUEST
+                state["intent"] = rule_result[0]
+                state["confidence"] = rule_result[1]
+                self._append_intent_history(state, intent_history, rule_result[0], rule_result[1])
+                return state
+
+            confidence = 0.92
+            state["intent"] = last_intent
+            state["confidence"] = confidence
+            self._append_intent_history(state, intent_history, last_intent, confidence)
+            return state
 
         image_intents = []
         if has_attachments:
@@ -210,7 +253,6 @@ class IntentRecognitionNode(BaseNode):
             self._append_intent_history(state, intent_history, INTENT_DOCUMENT_ANALYSIS, 0.95)
             return state
 
-        rule_result = self._match_by_rules(user_message)
         if rule_result:
             state["intent"] = rule_result[0]
             state["confidence"] = rule_result[1]
@@ -225,8 +267,8 @@ class IntentRecognitionNode(BaseNode):
             self._append_intent_history(
                 state,
                 intent_history,
-                cached["intent"],  # type: ignore[arg-type]
-                cached["confidence"],  # type: ignore[arg-type]
+                cached["intent"],
+                cached["confidence"],
             )
             return state
 

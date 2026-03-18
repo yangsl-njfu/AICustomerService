@@ -193,18 +193,24 @@ class TestIntentRecognitionNodeExecute:
         # Clear the class-level cache before each test
         IntentRecognitionNode._intent_cache.clear()
 
-    def _make_state(self, message="你好", intent_history=None, attachments=None):
-        return {
+    def _make_state(self, message="你好", intent_history=None, attachments=None, **overrides):
+        state = {
             "user_message": message,
             "user_id": "test_user",
             "session_id": "test_session",
             "attachments": attachments,
             "conversation_history": [],
             "user_profile": {},
+            "last_intent": None,
+            "dialogue_act": None,
+            "continue_previous_task": False,
+            "task_stack": [],
             "intent": None,
             "confidence": None,
             "intent_history": intent_history,
         }
+        state.update(overrides)
+        return state
 
     def _make_mock_llm(self, response_text="问答"):
         mock_llm = AsyncMock()
@@ -291,6 +297,77 @@ class TestIntentRecognitionNodeExecute:
         assert result["intent"] == "文档分析"
         assert len(result["intent_history"]) == 1
         assert result["intent_history"][0]["intent"] == "文档分析"
+
+    @pytest.mark.asyncio
+    async def test_continue_previous_task_reuses_last_intent(self):
+        mock_llm = self._make_mock_llm("问答")
+        node = IntentRecognitionNode(llm=mock_llm)
+        state = self._make_state(
+            message="需要",
+            intent_history=[],
+            last_intent="推荐",
+            dialogue_act="confirm",
+            continue_previous_task=True,
+        )
+
+        result = await node.execute(state)
+
+        assert result["intent"] == "推荐"
+        assert result["confidence"] == 0.92
+        mock_llm.ainvoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_task_uses_stacked_intent(self):
+        mock_llm = self._make_mock_llm("问答")
+        node = IntentRecognitionNode(llm=mock_llm)
+        state = self._make_state(
+            message="继续刚才那个",
+            dialogue_act="resume_task",
+            task_stack=[{"intent": "订单查询"}],
+        )
+
+        result = await node.execute(state)
+
+        assert result["intent"] == "订单查询"
+        assert result["confidence"] == 0.9
+        mock_llm.ainvoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_preselected_intent_from_policy_short_circuits(self):
+        mock_llm = self._make_mock_llm("问答")
+        node = IntentRecognitionNode(llm=mock_llm)
+        state = self._make_state(
+            message="帮我推荐几个 Java 项目",
+            intent_history=[],
+            intent="推荐",
+            confidence=0.91,
+        )
+
+        result = await node.execute(state)
+
+        assert result["intent"] == "推荐"
+        assert result["confidence"] == 0.91
+        mock_llm.ainvoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_explicit_new_intent_overrides_continuation_bias(self):
+        mock_llm = self._make_mock_llm("问答")
+        node = IntentRecognitionNode(llm=mock_llm)
+        state = self._make_state(
+            message="帮我推荐几个 Java 项目",
+            intent_history=[],
+            last_intent="问答",
+            dialogue_act="provide_slot",
+            continue_previous_task=True,
+        )
+
+        result = await node.execute(state)
+
+        assert result["intent"] == "推荐"
+        assert result["confidence"] == 0.95
+        assert result["continue_previous_task"] is False
+        assert result["dialogue_act"] == "new_request"
+        mock_llm.ainvoke.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_exception_fallback_appends_to_history(self):

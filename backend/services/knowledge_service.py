@@ -2,9 +2,11 @@
 知识库服务
 处理文档上传、文本提取和向量化
 """
+import logging
 import os
 import uuid
 import json
+import shutil
 from typing import List, Dict, Optional, Any
 from pathlib import Path
 from fastapi import UploadFile
@@ -18,6 +20,8 @@ from langchain_core.documents import Document as LangchainDocument
 from config import settings
 from .knowledge_retriever import knowledge_retriever
 
+logger = logging.getLogger(__name__)
+
 
 class KnowledgeService:
     """知识库服务类"""
@@ -25,6 +29,7 @@ class KnowledgeService:
     def __init__(self):
         self.upload_dir = Path(settings.UPLOAD_DIR) / "knowledge"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.legacy_upload_dirs = self._discover_legacy_upload_dirs()
         
         # 元数据文件，用于存储文档信息
         self.metadata_file = self.upload_dir / "metadata.json"
@@ -50,6 +55,142 @@ class KnowledgeService:
         """保存元数据"""
         with open(self.metadata_file, 'w', encoding='utf-8') as f:
             json.dump(self.metadata, f, ensure_ascii=False, indent=2)
+
+    def _discover_legacy_upload_dirs(self) -> List[Path]:
+        project_root = Path(__file__).resolve().parents[2]
+        candidates = [
+            project_root / "data" / "uploads" / "knowledge",
+        ]
+
+        upload_dir = self.upload_dir.resolve()
+        legacy_dirs: List[Path] = []
+        seen = set()
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            if resolved == upload_dir or not candidate.exists():
+                continue
+            key = str(resolved).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            legacy_dirs.append(candidate)
+        return legacy_dirs
+
+    def _document_files(self) -> List[Path]:
+        return sorted(
+            path
+            for path in self.upload_dir.iterdir()
+            if path.is_file() and path.name != "metadata.json"
+        )
+
+    def _legacy_document_files(self) -> List[Path]:
+        legacy_files: List[Path] = []
+        for legacy_dir in self.legacy_upload_dirs:
+            if not legacy_dir.exists():
+                continue
+            legacy_files.extend(
+                path
+                for path in legacy_dir.iterdir()
+                if path.is_file() and path.name != "metadata.json"
+            )
+        return sorted(legacy_files)
+
+    def _find_document_path(self, doc_id: str) -> Optional[Path]:
+        for base_dir in [self.upload_dir, *self.legacy_upload_dirs]:
+            for ext in ['pdf', 'doc', 'docx', 'txt', 'md']:
+                file_path = base_dir / f"{doc_id}.{ext}"
+                if file_path.exists():
+                    return file_path
+        return None
+
+    def import_legacy_documents(self) -> Dict[str, int]:
+        imported_count = 0
+        skipped_count = 0
+
+        for legacy_path in self._legacy_document_files():
+            target_path = self.upload_dir / legacy_path.name
+            if target_path.exists():
+                skipped_count += 1
+                continue
+            shutil.copy2(legacy_path, target_path)
+            imported_count += 1
+
+        if imported_count:
+            logger.info(
+                "Imported %s legacy knowledge files into %s",
+                imported_count,
+                self.upload_dir,
+            )
+
+        return {
+            "imported_count": imported_count,
+            "skipped_count": skipped_count,
+        }
+
+    def _chunk_ids_for_doc(self, doc_id: str, chunk_count: int) -> List[str]:
+        return [f"{doc_id}_{index}" for index in range(chunk_count)]
+
+    def _build_documents(
+        self,
+        *,
+        doc_id: str,
+        chunks: List[str],
+        file_name: str,
+        file_type: str,
+        user_id: str,
+        title: str,
+        description: str,
+    ) -> List[Dict[str, Any]]:
+        documents: List[Dict[str, Any]] = []
+        for i, chunk in enumerate(chunks):
+            documents.append({
+                "id": f"{doc_id}_{i}",
+                "content": chunk,
+                "metadata": {
+                    "doc_id": doc_id,
+                    "doc_title": title,
+                    "doc_description": description,
+                    "file_name": file_name,
+                    "file_type": file_type,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "uploaded_by": user_id,
+                    "source": "knowledge_upload"
+                }
+            })
+        return documents
+
+    def _upsert_metadata(
+        self,
+        *,
+        doc_id: str,
+        file_name: str,
+        file_type: str,
+        file_size: int,
+        title: str,
+        description: str,
+        uploaded_by: str,
+        chunk_count: int,
+        chunk_ids: List[str],
+        indexed: bool,
+        index_error: str = "",
+    ) -> None:
+        existing = self.metadata.get(doc_id, {})
+        existing.update({
+            "doc_id": doc_id,
+            "original_filename": file_name,
+            "title": title,
+            "description": description,
+            "file_type": file_type,
+            "file_size": file_size,
+            "chunk_count": chunk_count,
+            "uploaded_by": uploaded_by,
+            "chunk_ids": chunk_ids,
+            "indexed": indexed,
+            "index_error": index_error,
+        })
+        self.metadata[doc_id] = existing
+        self._save_metadata()
 
     def _get_file_extension(self, filename: str) -> str:
         """获取文件扩展名"""
@@ -130,53 +271,54 @@ class KnowledgeService:
             print(f"[DEBUG] 文本分割完成，chunks数量: {len(chunks)}")
 
             # 准备文档数据
-            documents = []
-            for i, chunk in enumerate(chunks):
-                documents.append({
-                    "id": f"{doc_id}_{i}",
-                    "content": chunk,
-                    "metadata": {
-                        "doc_id": doc_id,
-                        "doc_title": title or file.filename,
-                        "doc_description": description or "",
-                        "file_name": file.filename,
-                        "file_type": ext,
-                        "chunk_index": i,
-                        "total_chunks": len(chunks),
-                        "uploaded_by": user_id,
-                        "source": "knowledge_upload"
-                    }
-                })
+            documents = self._build_documents(
+                doc_id=doc_id,
+                chunks=chunks,
+                file_name=file.filename,
+                file_type=ext,
+                user_id=user_id,
+                title=title or file.filename,
+                description=description or "",
+            )
+            chunk_ids = [doc["id"] for doc in documents]
 
             print(f"[DEBUG] 文档数据准备完成")
 
             # 添加到向量数据库
             print(f"[DEBUG] knowledge_retriever.available: {knowledge_retriever.available}")
+            indexed = False
+            index_error = ""
             if knowledge_retriever.available:
                 try:
                     print(f"[DEBUG] 开始添加文档到向量数据库")
+                    await knowledge_retriever.delete_by_metadata({"doc_id": doc_id}, "knowledge_base")
                     await knowledge_retriever.add_documents(documents, "knowledge_base")
                     print(f"[DEBUG] 文档添加到向量数据库成功")
+                    indexed = True
                 except Exception as e:
-                    print(f"[WARNING] 向量化失败，但文件已保存: {type(e).__name__}: {str(e)}")
+                    index_error = f"{type(e).__name__}: {str(e)}"
+                    print(f"[WARNING] 向量化失败，但文件已保存: {index_error}")
                     # 向量化失败不影响文件上传，继续执行
             else:
                 print(f"[WARNING] knowledge_retriever 不可用，跳过向量化")
+                index_error = "knowledge_retriever unavailable"
 
             print(f"[DEBUG] 上传完成")
             
             # 保存元数据
-            self.metadata[doc_id] = {
-                "doc_id": doc_id,
-                "original_filename": file.filename,
-                "title": title or file.filename,
-                "description": description or "",
-                "file_type": ext,
-                "file_size": file_size,
-                "chunk_count": len(chunks),
-                "uploaded_by": user_id
-            }
-            self._save_metadata()
+            self._upsert_metadata(
+                doc_id=doc_id,
+                file_name=file.filename,
+                file_type=ext,
+                file_size=file_size,
+                title=title or file.filename,
+                description=description or "",
+                uploaded_by=user_id,
+                chunk_count=len(chunks),
+                chunk_ids=chunk_ids,
+                indexed=indexed,
+                index_error=index_error,
+            )
 
             return {
                 "doc_id": doc_id,
@@ -186,13 +328,126 @@ class KnowledgeService:
                 "file_type": ext,
                 "file_size": file_size,
                 "chunk_count": len(chunks),
-                "file_path": str(file_path)
+                "file_path": str(file_path),
+                "indexed": indexed,
             }
         except Exception as e:
             print(f"[ERROR] 上传文档失败: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
             raise
+
+    async def sync_document_to_vector_store(
+        self,
+        doc_id: str,
+        *,
+        file_path: Optional[Path] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """(Re)index a stored knowledge file into FAISS."""
+        if not knowledge_retriever.available:
+            raise RuntimeError("knowledge_retriever unavailable")
+
+        file_path = file_path or self._find_document_path(doc_id)
+        if not file_path or not file_path.exists():
+            raise FileNotFoundError(f"知识库文件不存在: {doc_id}")
+
+        meta = self.metadata.get(doc_id, {})
+        file_type = file_path.suffix.lstrip('.').lower()
+        file_name = meta.get("original_filename") or file_path.name
+        file_size = file_path.stat().st_size
+        title = meta.get("title") or meta.get("original_filename") or file_name
+        description = meta.get("description", "")
+        uploaded_by = meta.get("uploaded_by", "system_reindex")
+
+        text_content = await self._extract_text(str(file_path), file_type)
+        if not text_content.strip():
+            raise ValueError(f"无法从文件中提取文本: {file_name}")
+
+        chunks = self._split_text(text_content)
+        if not chunks:
+            raise ValueError(f"文档没有可索引内容: {file_name}")
+
+        existing_chunk_ids = list(meta.get("chunk_ids", []))
+        if existing_chunk_ids:
+            await knowledge_retriever.delete_documents(existing_chunk_ids, "knowledge_base")
+        else:
+            await knowledge_retriever.delete_by_metadata({"doc_id": doc_id}, "knowledge_base")
+
+        documents = self._build_documents(
+            doc_id=doc_id,
+            chunks=chunks,
+            file_name=file_name,
+            file_type=file_type,
+            user_id=uploaded_by,
+            title=title,
+            description=description,
+        )
+        chunk_ids = await knowledge_retriever.add_documents(documents, "knowledge_base")
+
+        self._upsert_metadata(
+            doc_id=doc_id,
+            file_name=file_name,
+            file_type=file_type,
+            file_size=file_size,
+            title=title,
+            description=description,
+            uploaded_by=uploaded_by,
+            chunk_count=len(chunk_ids),
+            chunk_ids=chunk_ids,
+            indexed=True,
+            index_error="",
+        )
+
+        return {
+            "doc_id": doc_id,
+            "chunk_count": len(chunk_ids),
+            "file_name": file_name,
+        }
+
+    async def reindex_documents(self, force: bool = False) -> Dict[str, Any]:
+        """Backfill existing uploaded documents into the vector store."""
+        if not knowledge_retriever.available:
+            return {
+                "success": False,
+                "message": "知识检索器不可用",
+                "indexed_count": 0,
+                "skipped_count": 0,
+                "failed_count": 0,
+            }
+
+        import_result = self.import_legacy_documents()
+        indexed_count = 0
+        skipped_count = 0
+        failed_count = 0
+        failures: List[Dict[str, str]] = []
+
+        for file_path in self._document_files():
+            doc_id = file_path.stem
+            meta = self.metadata.get(doc_id, {})
+
+            has_index = bool(meta.get("indexed") and meta.get("chunk_ids"))
+            if has_index and not force:
+                skipped_count += 1
+                continue
+
+            try:
+                await self.sync_document_to_vector_store(doc_id, file_path=file_path, force=force)
+                indexed_count += 1
+            except Exception as exc:
+                failed_count += 1
+                failures.append({"doc_id": doc_id, "error": str(exc)})
+                logger.warning("知识库回填失败 doc_id=%s", doc_id, exc_info=True)
+
+        return {
+            "success": failed_count == 0,
+            "legacy_imported_count": import_result["imported_count"],
+            "legacy_skipped_count": import_result["skipped_count"],
+            "indexed_count": indexed_count,
+            "skipped_count": skipped_count,
+            "failed_count": failed_count,
+            "failures": failures,
+        }
 
     async def _extract_text(self, file_path: str, ext: str) -> str:
         """从文件提取文本"""
@@ -254,9 +509,12 @@ class KnowledgeService:
         try:
             # 从向量数据库删除
             if knowledge_retriever.available:
-                # 获取所有相关 chunks
-                # 注意：这里简化处理，实际应该记录所有 chunk IDs
-                await knowledge_retriever.delete_document(f"{doc_id}_0", "knowledge_base")
+                meta = self.metadata.get(doc_id, {})
+                chunk_ids = meta.get("chunk_ids", [])
+                if chunk_ids:
+                    await knowledge_retriever.delete_documents(chunk_ids, "knowledge_base")
+                else:
+                    await knowledge_retriever.delete_by_metadata({"doc_id": doc_id}, "knowledge_base")
 
             # 删除文件
             for ext in ['pdf', 'doc', 'docx', 'txt', 'md']:

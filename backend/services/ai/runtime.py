@@ -1,8 +1,13 @@
 """
-AI runtime and business-pack composition layer.
+智能助手运行时与业务包装配层。
 
-The runtime bridges the generic workflow kernel with business-specific
-configuration such as tools, prompts, intent rules, and model overrides.
+运行时负责把通用工作流骨架与业务差异配置连接起来，
+例如工具、提示词、意图规则以及模型覆盖配置。
+
+在骨架设计中：
+- 工作流层维护稳定的内核执行顺序
+- 运行时层负责把业务差异注入内核
+- 插件与适配器也在这一层完成装配，避免内核感知当前业务包细节
 """
 from __future__ import annotations
 
@@ -18,7 +23,7 @@ from .constants import DEFAULT_INTENT_HANDLER_MAP, DEFAULT_INTENT_LABELS, DEFAUL
 
 @dataclass(frozen=True)
 class ExecutionContext:
-    """Standardized execution context passed across runtime boundaries."""
+    """跨运行时边界传递的标准执行上下文。"""
 
     business_id: str
     business_name: str
@@ -28,7 +33,11 @@ class ExecutionContext:
 
 
 class BusinessPack:
-    """Business-specific configuration wrapper."""
+    """业务配置包装器。
+
+    业务包是业务差异的最小装配单元，可以在不分叉工作流内核的前提下，
+    覆盖提示词、启用插件、意图标签和处理器映射。
+    """
 
     def __init__(self, business_id: str, config: Dict[str, Any]):
         self.business_id = business_id
@@ -107,7 +116,10 @@ class BusinessPack:
 
 
 class AIRuntime:
-    """Runtime object consumed by the workflow and nodes."""
+    """供工作流和节点使用的运行时对象。
+
+    各节点应通过运行时获取模型、提示词和工具，而不是把业务知识直接写死。
+    """
 
     def __init__(self, business_pack: BusinessPack, adapter: Any):
         self.business_pack = business_pack
@@ -133,6 +145,7 @@ class AIRuntime:
         )
 
     def get_chat_model(self, role: str = "chat"):
+        # 按角色和覆盖配置缓存模型实例，避免同一业务包的请求重复初始化模型。
         overrides = self.business_pack.get_llm_overrides()
         cache_key = (role, tuple(sorted(overrides.items())))
         if cache_key in self._model_cache:
@@ -163,6 +176,8 @@ class AIRuntime:
         group: str = "default",
         execution_context: Optional[dict] = None,
     ) -> List[Any]:
+        # 通过工具分组，让同一业务包在不同节点暴露不同能力集合，
+        # 例如默认路由使用一组工具，选题顾问使用另一组工具。
         names = self.business_pack.get_enabled_plugin_names(group=group)
         plugins = self.plugin_manager.get_plugins(names=names, group=group)
         return [
@@ -196,7 +211,11 @@ class AIRuntime:
 
 
 class AIRuntimeFactory:
-    """Caches runtimes and workflows per business pack."""
+    """按业务包缓存运行时和工作流。
+
+    这样可以复用“一套内核、多套业务包”的骨架设计：
+    每个业务拥有独立的运行时与工作流对象，但不会在每次请求时重复构建。
+    """
 
     def __init__(self):
         self._runtimes: Dict[str, AIRuntime] = {}

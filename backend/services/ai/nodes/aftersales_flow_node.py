@@ -1,6 +1,8 @@
 """
-售后流程节点 - 处理退款/退货/换货全流程
-流程: select_order → select_type → select_reason → input_description → confirm → submit → result
+售后流程节点。
+
+负责处理退款、退货和换货的完整售后流程。
+主步骤依次为：选择订单 -> 选择类型 -> 选择原因 -> 补充描述 -> 确认 -> 提交 -> 展示结果。
 """
 import logging
 from .base import BaseNode
@@ -231,10 +233,10 @@ class AftersalesFlowNode(BaseNode):
 
         # 计算退款金额（单位：分）
         if items:
-            # items 中的 price 已经是分
+        # 明细里的价格字段已经是“分”为单位。
             refund_amount = items[0].get("price", 0)
         else:
-            # total_amount 是元，需要转换为分
+        # 订单总额字段是“元”为单位，提交前需要换算成分。
             refund_amount = int(flow_data.get("total_amount", 0) * 100)
 
         flow_data["refund_amount"] = refund_amount

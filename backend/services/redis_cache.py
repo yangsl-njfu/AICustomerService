@@ -14,6 +14,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency in some te
 from config import settings
 
 logger = logging.getLogger(__name__)
+_MISSING = object()
 
 
 class MemoryCache:
@@ -42,6 +43,11 @@ class MemoryCache:
         last_intent: Optional[str] = None,
         intent_history: Optional[List[Dict]] = None,
         conversation_summary: Optional[str] = None,
+        last_quick_actions: Optional[List[Dict]] = None,
+        active_task: Any = _MISSING,
+        task_stack: Any = _MISSING,
+        pending_question: Any = _MISSING,
+        pending_action: Any = _MISSING,
     ):
         key = f"session:{session_id}:context"
         existing = self._cache.get(key, {})
@@ -55,6 +61,16 @@ class MemoryCache:
             existing["intent_history"] = intent_history
         if conversation_summary is not None:
             existing["conversation_summary"] = conversation_summary
+        if last_quick_actions is not None:
+            existing["last_quick_actions"] = last_quick_actions
+        if active_task is not _MISSING:
+            existing["active_task"] = active_task
+        if task_stack is not _MISSING:
+            existing["task_stack"] = task_stack
+        if pending_question is not _MISSING:
+            existing["pending_question"] = pending_question
+        if pending_action is not _MISSING:
+            existing["pending_action"] = pending_action
         existing["updated_at"] = datetime.now().isoformat()
         self._cache[key] = existing
 
@@ -96,6 +112,11 @@ class MemoryCache:
             "last_intent": data.get("last_intent"),
             "intent_history": data.get("intent_history", []),
             "conversation_summary": data.get("conversation_summary", ""),
+            "last_quick_actions": data.get("last_quick_actions", []),
+            "active_task": data.get("active_task"),
+            "task_stack": data.get("task_stack", []),
+            "pending_question": data.get("pending_question"),
+            "pending_action": data.get("pending_action"),
             "updated_at": data.get("updated_at"),
         }
 
@@ -159,6 +180,11 @@ class RedisCache:
         last_intent: Optional[str] = None,
         intent_history: Optional[List[Dict]] = None,
         conversation_summary: Optional[str] = None,
+        last_quick_actions: Optional[List[Dict]] = None,
+        active_task: Any = _MISSING,
+        task_stack: Any = _MISSING,
+        pending_question: Any = _MISSING,
+        pending_action: Any = _MISSING,
     ):
         if not self._connected or self._client is None:
             await self._memory.update_context(
@@ -168,6 +194,11 @@ class RedisCache:
                 last_intent=last_intent,
                 intent_history=intent_history,
                 conversation_summary=conversation_summary,
+                last_quick_actions=last_quick_actions,
+                active_task=active_task,
+                task_stack=task_stack,
+                pending_question=pending_question,
+                pending_action=pending_action,
             )
             return
 
@@ -182,6 +213,16 @@ class RedisCache:
             existing["intent_history"] = intent_history
         if conversation_summary is not None:
             existing["conversation_summary"] = conversation_summary
+        if last_quick_actions is not None:
+            existing["last_quick_actions"] = last_quick_actions
+        if active_task is not _MISSING:
+            existing["active_task"] = active_task
+        if task_stack is not _MISSING:
+            existing["task_stack"] = task_stack
+        if pending_question is not _MISSING:
+            existing["pending_question"] = pending_question
+        if pending_action is not _MISSING:
+            existing["pending_action"] = pending_action
         existing["updated_at"] = datetime.now().isoformat()
         await self._client.set(
             self._context_key(session_id),

@@ -97,6 +97,9 @@ def _make_state(**overrides):
         "response": "hi there",
         "intent": "问答",
         "intent_history": [{"intent": "问答", "confidence": 0.9, "turn": 1}],
+        "quick_actions": [],
+        "active_task": None,
+        "task_stack": [],
     }
     base.update(overrides)
     return base
@@ -126,8 +129,34 @@ async def test_saves_message_and_intent_history():
         session_id="test-session",
         last_intent="问答",
         intent_history=[{"intent": "问答", "confidence": 0.9, "turn": 1}],
+        last_quick_actions=[],
+        active_task=None,
+        task_stack=[],
+        pending_question=None,
+        pending_action=None,
     )
     assert result is state
+
+
+@pytest.mark.asyncio
+async def test_save_context_updates_active_task_pending_state():
+    node = SaveContextNode(llm=None)
+    state = _make_state(
+        response="请从下面选择一个项目：",
+        quick_actions=[{"type": "product", "data": {"title": "Java 图书管理系统"}}],
+        active_task={"id": "task-1", "intent": "推荐", "status": "active", "slots": {}},
+    )
+
+    mock_cache = MagicMock()
+    mock_cache.add_message_to_context = AsyncMock()
+    mock_cache.update_context = AsyncMock()
+
+    with patch.object(_node_mod, "redis_cache", mock_cache):
+        await node.execute(state)
+
+    assert state["active_task"]["status"] == "awaiting_user"
+    assert state["pending_action"] == "select_recommended_item"
+    assert state["pending_question"] == "请从下面选择一个项目："
 
 
 @pytest.mark.asyncio
@@ -248,3 +277,58 @@ async def test_no_summarization_when_below_threshold():
     node.summarizer.summarize.assert_not_awaited()
     # update_context should only be called once (for intent_history)
     mock_cache.update_context.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_control_response_preserves_resume_position():
+    node = SaveContextNode(llm=None)
+    state = _make_state(
+        response="我先确认一下，您是想继续刚才的推荐任务，还是切换到新的问题？",
+        response_mode="clarify_before_resume",
+        resume_mode="resume_exact",
+        pending_question="这些里你更喜欢哪一个？",
+        pending_action="select_recommended_item",
+        active_task={
+            "id": "task-1",
+            "intent": "推荐",
+            "status": "awaiting_user",
+            "slots": {"language": "Java"},
+            "pending_question": "这些里你更喜欢哪一个？",
+            "pending_action": "select_recommended_item",
+        },
+    )
+
+    mock_cache = MagicMock()
+    mock_cache.add_message_to_context = AsyncMock()
+    mock_cache.update_context = AsyncMock()
+
+    with patch.object(_node_mod, "redis_cache", mock_cache):
+        await node.execute(state)
+
+    assert state["pending_action"] == "select_recommended_item"
+    assert state["pending_question"] == "这些里你更喜欢哪一个？"
+    assert state["active_task"]["resume_mode"] == "resume_exact"
+    assert state["active_task"]["resume_pending_action"] == "select_recommended_item"
+
+
+@pytest.mark.asyncio
+async def test_cancel_control_response_clears_active_task():
+    node = SaveContextNode(llm=None)
+    state = _make_state(
+        response="好的，我先把刚才的推荐任务停在这里。",
+        response_mode="cancel_current_task",
+        active_task={"id": "task-1", "intent": "推荐", "status": "awaiting_user", "slots": {}},
+        pending_question="这些里你更喜欢哪一个？",
+        pending_action="select_recommended_item",
+    )
+
+    mock_cache = MagicMock()
+    mock_cache.add_message_to_context = AsyncMock()
+    mock_cache.update_context = AsyncMock()
+
+    with patch.object(_node_mod, "redis_cache", mock_cache):
+        await node.execute(state)
+
+    assert state["active_task"] is None
+    assert state["pending_question"] is None
+    assert state["pending_action"] is None

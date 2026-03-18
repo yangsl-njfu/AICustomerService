@@ -94,6 +94,7 @@ def _make_state(user_message="请问这个商品怎么样？", conversation_summ
         "attachments": [],
         "retrieved_docs": [],
         "sources": [],
+        "continue_previous_task": False,
     }
     state.update(overrides)
     return state
@@ -148,3 +149,20 @@ class TestQANodeSummaryInjection:
 
         system_content = messages[0].content
         assert "对话历史摘要" not in system_content
+
+    @pytest.mark.asyncio
+    async def test_short_reply_with_continuation_uses_rag_prompt(self):
+        """Continuation replies should not be downgraded to chitchat by length."""
+        _mock_retriever.retrieve.reset_mock()
+        state = _make_state(
+            user_message="需要",
+            conversation_summary="用户上一轮在问推荐项目",
+            continue_previous_task=True,
+        )
+        node = QANode(llm=MagicMock())
+
+        messages = await node._prepare_messages(state)
+
+        system_content = messages[0].content
+        assert "对话历史摘要" in system_content
+        _mock_retriever.retrieve.assert_awaited()

@@ -1,4 +1,4 @@
-"""Workflow route resolution."""
+"""工作流路由决策。"""
 from __future__ import annotations
 
 from .constants import DEFAULT_INTENT_HANDLER_MAP, INTENT_AFTERSALES, INTENT_RECOMMEND
@@ -6,7 +6,7 @@ from .state import ConversationState
 
 
 class Router:
-    """Route workflow execution based on intent and tool usage."""
+    """根据意图和工具调用结果决定后续节点。"""
 
     def __init__(self, runtime=None):
         self.runtime = runtime
@@ -32,6 +32,9 @@ class Router:
         return self.route_by_intent(state)
 
     def route_by_intent(self, state: ConversationState) -> str:
+        if state.get("need_clarification"):
+            return "clarify"
+
         if state.get("confidence", 0) < 0.6:
             return "clarify"
 

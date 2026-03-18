@@ -3,11 +3,14 @@
 """
 import logging
 import os
+from pathlib import Path
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import List
 
 logger = logging.getLogger(__name__)
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_DIR = BACKEND_DIR / "data"
 
 
 class Settings(BaseSettings):
@@ -37,7 +40,7 @@ class Settings(BaseSettings):
     CONTEXT_CACHE_TTL_SECONDS: int = 86400
     
     # FAISS配置
-    FAISS_PERSIST_DIRECTORY: str = "./data/faiss"
+    FAISS_PERSIST_DIRECTORY: str = str(DATA_DIR / "faiss")
     
     # JWT配置
     JWT_SECRET_KEY: str = ""
@@ -77,7 +80,7 @@ class Settings(BaseSettings):
     VISION_LLM_MODEL: str = "Qwen/Qwen3-VL-8B-Thinking"  # 模型名称
     
     # 文件上传配置
-    UPLOAD_DIR: str = "./data/uploads"
+    UPLOAD_DIR: str = str(DATA_DIR / "uploads")
     MAX_FILE_SIZE: int = 10485760  # 10MB
     ALLOWED_EXTENSIONS: str = "pdf,doc,docx,txt,png,jpg,jpeg"
     
@@ -116,6 +119,18 @@ class Settings(BaseSettings):
             if normalized in {"debug", "dev", "development", "true", "1", "on", "yes"}:
                 return True
         return value
+
+    @field_validator("FAISS_PERSIST_DIRECTORY", "UPLOAD_DIR", mode="before")
+    @classmethod
+    def resolve_data_paths(cls, value):
+        """Resolve relative storage paths against the backend directory."""
+        if not value:
+            return value
+
+        path = Path(str(value))
+        if path.is_absolute():
+            return str(path)
+        return str((BACKEND_DIR / path).resolve())
     
     @property
     def database_url(self) -> str:

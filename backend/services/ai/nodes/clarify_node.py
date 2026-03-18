@@ -40,7 +40,7 @@ class ClarifyNode(BaseNode):
         return state
 
     async def execute_stream(self, state: ConversationState):
-        """流式执行意图澄清，逐 token yield"""
+        """以流式方式执行意图澄清，逐字输出结果。"""
         prompt = ChatPromptTemplate.from_messages([
             ("system", """你是一个友好的AI客服助手。用户的消息意图不够明确，请自然地询问用户需要什么帮助。
 要求：

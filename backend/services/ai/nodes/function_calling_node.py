@@ -1,4 +1,4 @@
-"""Function-calling node backed by runtime-managed tools."""
+"""基于运行时工具集的函数调用节点。"""
 from __future__ import annotations
 
 import logging
@@ -33,7 +33,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 class FunctionCallingNode(BaseNode):
-    """Let the LLM pick and invoke tools for the current business pack."""
+    """让大模型为当前业务包选择并调用合适的工具。"""
 
     def __init__(self, llm=None, runtime=None):
         super().__init__(llm=llm, runtime=runtime)

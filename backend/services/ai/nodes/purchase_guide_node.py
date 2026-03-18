@@ -47,7 +47,7 @@ class PurchaseGuideNode(BaseNode):
         return state
 
     async def execute_stream(self, state: ConversationState):
-        """流式执行购买指导，逐 token yield"""
+        """以流式方式执行购买指导，逐字输出结果。"""
         prompt = ChatPromptTemplate.from_messages([
             ("system", """你是购买指导专家。帮助用户了解购买流程。
 

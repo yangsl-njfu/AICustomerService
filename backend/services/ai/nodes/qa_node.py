@@ -11,7 +11,7 @@ from config import settings
 
 file_service = FileService()
 
-# 闲聊/打招呼关键词，不需要 RAG
+# 闲聊或打招呼类关键词，不需要走检索增强。
 _CHITCHAT_PATTERNS = re.compile(
     r'^(你好|hello|hi|嗨|在吗|在不在|你是谁|你叫什么|谢谢|感谢|好的|ok|再见|拜拜|嗯|哦)[\?？!！。~～.]*$',
     re.IGNORECASE
@@ -46,15 +46,17 @@ SIMPLE_PROMPT = ChatPromptTemplate.from_messages([
 class QANode(BaseNode):
     """问答流程节点"""
 
-    def _is_chitchat(self, message: str) -> bool:
+    def _is_chitchat(self, message: str, state: ConversationState) -> bool:
         """判断是否是闲聊/打招呼"""
+        if state.get("continue_previous_task"):
+            return False
         return bool(_CHITCHAT_PATTERNS.match(message.strip())) or len(message.strip()) <= 4
 
     async def _prepare_messages(self, state: ConversationState):
-        """准备 LLM 消息：闲聊走简单 prompt，其他走 RAG"""
+        """准备模型消息：闲聊走简化提示词，其余场景走检索增强。"""
         user_message = state["user_message"]
 
-        if self._is_chitchat(user_message):
+        if self._is_chitchat(user_message, state):
             state["retrieved_docs"] = []
             state["sources"] = []
             return SIMPLE_PROMPT.format_messages(question=user_message)
@@ -69,7 +71,7 @@ class QANode(BaseNode):
                     if text:
                         attachment_texts.append(f"【{att.get('file_name', '文件')}】\n{text[:5000]}")
 
-        # RAG 检索
+        # 先执行检索增强，再组织问答提示词。
         docs = await knowledge_retriever.retrieve(
             query=user_message,
             collection_name="knowledge_base",
@@ -109,7 +111,7 @@ class QANode(BaseNode):
         return state
 
     async def execute_stream(self, state: ConversationState):
-        """流式执行，逐 token yield"""
+        """以流式方式执行问答，逐字输出结果。"""
         messages = await self._prepare_messages(state)
         full_response = ""
         async for chunk in self.llm.astream(messages):

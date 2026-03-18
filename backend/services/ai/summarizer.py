@@ -1,15 +1,20 @@
 """
-对话摘要压缩器 - 将较早的对话历史压缩为摘要文本，保留关键信息
+对话摘要压缩器。
 
-Requirements:
-- 3.1: 对话历史轮数超过阈值时自动触发摘要
-- 3.2: 将阈值之前的历史消息压缩为结构化摘要，保留关键信息
-- 3.3: 用摘要替换被压缩的历史消息，保留阈值之后的最近对话原文
-- 3.5: 摘要后总 token 数不超过配置上限
-- 3.6: 摘要失败时回退到截断策略
+负责将较早的对话历史压缩为摘要文本，同时保留关键上下文信息。
+
+需求：
+- 3.1：当对话历史超过阈值时自动触发摘要
+- 3.2：将阈值之前的历史消息压缩为结构化摘要
+- 3.3：保留阈值之后的最近原始对话
+- 3.5：摘要后总令牌数不能超过配置上限
+- 3.6：摘要失败时退回到截断策略
 """
+
 import logging
+
 from langchain_core.prompts import ChatPromptTemplate
+
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,11 +36,10 @@ SUMMARY_PROMPT = ChatPromptTemplate.from_messages([
 
 
 def estimate_tokens(text: str) -> int:
-    """Estimate token count for text.
+    """估算一段文本的令牌数量。
 
-    Uses a simple heuristic: roughly 1 token per 2 characters for Chinese text.
-    This is a conservative estimate that works reasonably well for mixed
-    Chinese/English content.
+    这里采用简单启发式：中文大约每 2 个字符记作 1 个令牌，
+    对中英文混合内容也能给出相对保守的估算值。
     """
     if not text:
         return 0
@@ -43,9 +47,9 @@ def estimate_tokens(text: str) -> int:
 
 
 def estimate_history_tokens(history: list) -> int:
-    """Estimate total token count for a list of history messages.
+    """估算一组历史消息的总令牌数量。
 
-    Each history entry is expected to be a dict with 'user' and 'assistant' keys.
+    每条历史消息默认包含“用户内容”和“助手内容”两个字段。
     """
     total = 0
     for msg in history:
@@ -56,7 +60,7 @@ def estimate_history_tokens(history: list) -> int:
 
 
 def _format_history_for_summary(history: list) -> str:
-    """Format history messages into a readable text block for the LLM prompt."""
+    """将历史消息整理成适合摘要提示词使用的可读文本块。"""
     lines = []
     for msg in history:
         user_text = msg.get("user", "")
@@ -69,66 +73,64 @@ def _format_history_for_summary(history: list) -> str:
 
 
 class ConversationSummarizer:
-    """对话摘要压缩器
+    """对话摘要压缩器。
 
-    Compresses older conversation history into a summary text while keeping
-    recent messages intact. Uses an LLM to generate intelligent summaries
-    and falls back to simple truncation on failure.
+    该组件会把较早的对话历史压缩为摘要，同时保留最近消息原文。
+    优先使用大模型生成智能摘要，失败时再退回到简单截断。
     """
 
     def __init__(self, llm):
         self.llm = llm
-        self.trigger_threshold = settings.SUMMARY_TRIGGER_THRESHOLD  # default 10
-        self.max_tokens = settings.CONTEXT_MAX_TOKENS  # default 3000
+        self.trigger_threshold = settings.SUMMARY_TRIGGER_THRESHOLD  # 默认 10
+        self.max_tokens = settings.CONTEXT_MAX_TOKENS  # 默认 3000
 
     def should_summarize(self, history: list) -> bool:
-        """Check if summarization should be triggered.
+        """判断是否需要触发摘要。
 
-        Returns True when the number of history messages exceeds the
-        configured trigger threshold.
+        当历史消息数量超过配置阈值时返回真值。
 
-        Requirement 3.1: Trigger when len(history) > SUMMARY_TRIGGER_THRESHOLD
+        需求 3.1：当历史长度超过摘要触发阈值时执行摘要。
         """
         return len(history) > self.trigger_threshold
 
     async def summarize(self, history: list, existing_summary: str = "") -> dict:
-        """Generate a summary of older conversation history.
+        """生成较早历史对话的摘要。
 
-        Splits history at the trigger threshold:
-        - Messages before the threshold are compressed into a summary
-        - Messages after the threshold are kept as remaining_history
+        会按照触发阈值拆分历史：
+        - 阈值之前的消息压缩成摘要
+        - 阈值之后的消息保留为最近历史
 
-        After summarization, checks if total tokens (summary + remaining_history)
-        exceed CONTEXT_MAX_TOKENS. If so, truncates remaining_history further.
+        摘要生成后，还会校验“摘要 + 保留历史”的总令牌数，
+        如果超过上下文上限，就继续裁剪最近历史。
 
-        Args:
-            history: Full conversation history list
-            existing_summary: Previously generated summary to incorporate
+        参数：
+            第一项是完整的对话历史，
+            第二项是已有摘要文本，会在新摘要中合并考虑。
 
-        Returns:
-            dict with keys:
-                - "summary": The generated summary text
-                - "remaining_history": List of recent messages to keep
+        返回值：
+            一个字典，其中包含：
+            - 生成后的摘要文本
+            - 保留的最近历史消息
 
-        Requirement 3.2: Compress messages before threshold into summary
-        Requirement 3.3: Keep messages after threshold as remaining_history
-        Requirement 3.5: Ensure total tokens don't exceed CONTEXT_MAX_TOKENS
+        需求 3.2：阈值之前的消息压缩为摘要
+        需求 3.3：阈值之后的消息保留为最近历史
+        需求 3.5：总令牌数不超过上下文上限
         """
-        # Split history: messages to summarize vs messages to keep
+        # 先拆分出需要压缩的历史和需要保留的最近消息。
         messages_to_summarize = history[:-self.trigger_threshold] if len(history) > self.trigger_threshold else []
         remaining_history = history[-self.trigger_threshold:]
 
         if not messages_to_summarize:
-            # Nothing to summarize - return as-is
+            # 没有可压缩的历史时，直接返回原结果。
             return {
                 "summary": existing_summary,
                 "remaining_history": remaining_history,
             }
 
-        # Format the messages to summarize into text for the LLM
+        # 将待压缩历史整理成供大模型使用的文本块。
         history_text = _format_history_for_summary(messages_to_summarize)
 
-        # Call LLM to generate summary
+        # 调用大模型生成摘要。
         messages = SUMMARY_PROMPT.format_messages(
             existing_summary=existing_summary or "（无）",
             history_text=history_text,
@@ -141,7 +143,7 @@ class ConversationSummarizer:
             f"保留 {len(remaining_history)} 条最近消息"
         )
 
-        # Check token limits and truncate remaining_history if needed
+        # 摘要生成后再次检查令牌上限，必要时继续裁剪最近历史。
         remaining_history = self._enforce_token_limit(summary, remaining_history)
 
         return {
@@ -150,12 +152,12 @@ class ConversationSummarizer:
         }
 
     def _enforce_token_limit(self, summary: str, remaining_history: list) -> list:
-        """Ensure total tokens (summary + remaining_history) don't exceed max_tokens.
+        """确保“摘要 + 保留历史”的总令牌数不超过上限。
 
-        If the total exceeds the limit, progressively removes the oldest messages
-        from remaining_history until the constraint is satisfied.
+        如果超限，就持续移除保留历史中最早的消息，
+        直到满足约束。
 
-        Requirement 3.5: Total tokens must not exceed CONTEXT_MAX_TOKENS
+        需求 3.5：总令牌数不得超过上下文上限。
         """
         summary_tokens = estimate_tokens(summary)
 
@@ -166,22 +168,21 @@ class ConversationSummarizer:
             if total_tokens <= self.max_tokens:
                 break
 
-            # Remove the oldest message from remaining_history
+            # 超限时优先移除保留历史中最早的一条消息。
             remaining_history = remaining_history[1:]
             logger.debug(
-                f"Token 超限，截断最早消息。当前: {len(remaining_history)} 条, "
-                f"估算 token: {summary_tokens + estimate_history_tokens(remaining_history)}"
+                f"令牌超限，截断最早消息。当前: {len(remaining_history)} 条, "
+                f"估算令牌数: {summary_tokens + estimate_history_tokens(remaining_history)}"
             )
 
         return remaining_history
 
     def fallback_truncate(self, history: list) -> dict:
-        """Fallback truncation strategy when summarization fails.
+        """摘要失败时的兜底截断策略。
 
-        Simply keeps the most recent messages (up to trigger_threshold count)
-        and discards older messages without generating a summary.
+        该策略仅保留最近的若干条消息，不再生成摘要文本。
 
-        Requirement 3.6: Fallback to truncation on summarization failure
+        需求 3.6：摘要失败时退回到截断策略。
         """
         return {
             "summary": "",

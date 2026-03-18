@@ -1,15 +1,15 @@
 """
-智能助手工作流编排器。
+AI 工作流编排器。
 
-整个工作流保持通用，不把具体业务写死在这里。
-业务差异通过运行时对象注入，包括工具、提示词、模型选择和处理器映射。
+当前版本优先保证主链路稳定：
+1. 先加载上下文
+2. 再做消息入口分类
+3. 根据入口分类规划回复模式
+4. 进入意图决策与状态更新
+5. 调用工具并路由到具体业务技能
+6. 保存上下文，供下一轮继续使用
 
-骨架设计分为五层：
-1. 内核层：维护稳定的请求生命周期与图结构
-2. 运行时层：注入业务包特有的模型、提示词、插件和处理器映射
-3. 对话层：统一入口节点判断当前消息是新任务还是流程内输入，再由对话状态节点显式维护延续关系
-4. 技能层：问答、推荐、订单、购买、售后等节点执行具体业务能力
-5. 持久化层：上下文保存节点把当前轮结果写回缓存，形成下一轮的起点
+这里保留了原有业务技能节点，只收口会话主干，避免入口层与业务层耦合。
 """
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ from .handler_registry import HandlerRegistry
 from .nodes import (
     AftersalesFlowNode,
     ClarifyNode,
-    ConversationControlNode,
     ContextNode,
+    ConversationControlNode,
     DialogueStateNode,
     DocumentNode,
     FunctionCallingNode,
@@ -53,11 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 class AIWorkflow:
-    """面向单个业务运行时的通用工作流内核。
-
-    该类刻意保持业务无关，只定义稳定的编排顺序；
-    每个业务包需要注入什么模型、工具和提示词，由运行时对象决定。
-    """
+    """单业务运行时下的 AI 工作流。"""
 
     def __init__(self, runtime=None):
         self.runtime = runtime or runtime_factory.get_runtime()
@@ -65,16 +61,15 @@ class AIWorkflow:
         self.intent_llm = self.runtime.get_chat_model("intent") if self.runtime else init_intent_model()
         self.router = Router(runtime=self.runtime)
 
-        # 骨架节点的主顺序如下：
-        # 加载上下文 -> 进入会话 -> 决定任务策略 -> 执行业务节点。
         self.context_node = ContextNode()
         self.message_entry_node = MessageEntryNode(self.intent_llm, runtime=self.runtime)
         self.response_planner_node = ResponsePlannerNode(runtime=self.runtime)
-        self.conversation_control_node = ConversationControlNode()
         self.policy_node = PolicyNode(runtime=self.runtime)
+        self.conversation_control_node = ConversationControlNode(self.llm)
         self.dialogue_state_node = DialogueStateNode()
         self.function_calling_node = FunctionCallingNode(self.llm, runtime=self.runtime)
         self.save_context_node = SaveContextNode(self.llm)
+
         self.qa_node = QANode(self.llm)
         self.document_node = DocumentNode(self.llm)
         self.ticket_node = TicketNode(self.llm)
@@ -90,7 +85,7 @@ class AIWorkflow:
         self._register_builtin_handlers()
         self.graph = self._build_graph()
 
-    def _register_builtin_handlers(self):
+    def _register_builtin_handlers(self) -> None:
         self.handlers.register("qa_flow", self.qa_node, stream_enabled=True)
         self.handlers.register("ticket_flow", self.ticket_node)
         self.handlers.register("document_analysis", self.document_node, stream_enabled=True)
@@ -104,7 +99,6 @@ class AIWorkflow:
     def _build_graph(self):
         workflow = StateGraph(ConversationState)
 
-        # 这里只构建一次固定图结构，后续同一业务运行时的请求都复用这张图。
         workflow.add_node("load_context", self.context_node.execute)
         workflow.add_node("message_entry", self.message_entry_node.execute)
         workflow.add_node("response_planner", self.response_planner_node.execute)
@@ -113,6 +107,7 @@ class AIWorkflow:
         workflow.add_node("dialogue_state", self.dialogue_state_node.execute)
         workflow.add_node("function_calling", self.function_calling_node.execute)
         workflow.add_node("save_context", self.save_context_node.execute)
+
         workflow.add_node("qa_flow", self.qa_node.execute)
         workflow.add_node("document_analysis", self.document_node.execute)
         workflow.add_node("ticket_flow", self.ticket_node.execute)
@@ -124,7 +119,6 @@ class AIWorkflow:
         workflow.add_node("aftersales_flow", self.aftersales_flow_node.execute)
 
         workflow.set_entry_point("load_context")
-        # 图的前半段负责对话理解、策略决策和状态更新。
         workflow.add_edge("load_context", "message_entry")
         workflow.add_edge("message_entry", "response_planner")
         workflow.add_conditional_edges(
@@ -144,8 +138,6 @@ class AIWorkflow:
             },
         )
         workflow.add_edge("dialogue_state", "function_calling")
-
-        # 工具调用结束后，再由路由器决定进入哪个具体业务节点。
         workflow.add_conditional_edges(
             "function_calling",
             self.router.route_after_function_calling,
@@ -162,30 +154,29 @@ class AIWorkflow:
             },
         )
 
+        workflow.add_edge("conversation_control", "save_context")
         workflow.add_edge("qa_flow", "save_context")
         workflow.add_edge("ticket_flow", "save_context")
-        workflow.add_edge("conversation_control", "save_context")
         workflow.add_edge("document_analysis", "save_context")
         workflow.add_edge("product_inquiry", "save_context")
         workflow.add_edge("purchase_guide", "save_context")
         workflow.add_edge("order_query", "save_context")
         workflow.add_edge("topic_advisor", "save_context")
         workflow.add_edge("aftersales_flow", "save_context")
+
         workflow.add_edge("clarify", END)
-        # 普通业务节点统一在结束前保存上下文，为下一轮做准备。
         workflow.add_edge("save_context", END)
-
         return workflow.compile()
-
-    def _route_after_understanding(self, state: ConversationState) -> str:
-        if self._should_clarify(state):
-            return "clarify"
-        return "dialogue_state"
 
     def _route_after_response_planner(self, state: ConversationState) -> str:
         if self._should_use_conversation_control(state):
             return "conversation_control"
         return "policy"
+
+    def _route_after_understanding(self, state: ConversationState) -> str:
+        if self._should_clarify(state):
+            return "clarify"
+        return "dialogue_state"
 
     def _should_use_conversation_control(self, state: ConversationState) -> bool:
         return state.get("response_mode") in CONTROL_RESPONSE_MODES
@@ -195,7 +186,6 @@ class AIWorkflow:
             return False
         if state.get("need_clarification"):
             return True
-
         confidence = float(state.get("confidence") or 0.0)
         return not state.get("intent") and confidence < 0.6
 
@@ -210,7 +200,6 @@ class AIWorkflow:
     ) -> ConversationState:
         execution_context = None
         business_id = None
-
         if self.runtime is not None:
             business_id = self.runtime.business_pack.business_id
             execution_context = asdict(
@@ -221,8 +210,6 @@ class AIWorkflow:
                 )
             )
 
-        # 会话状态是骨架节点之间共享的契约。
-        # 这里显式列出默认值，便于后续安全插入新节点。
         return {
             "user_message": message,
             "user_id": user_id,
@@ -243,6 +230,13 @@ class AIWorkflow:
             "active_flow": None,
             "current_step": None,
             "expected_user_acts": [],
+            "expected_slot": None,
+            "expected_input_type": None,
+            "semantic_source": None,
+            "intent_hint": None,
+            "semantic_confidence": None,
+            "policy_action": None,
+            "skill_route": None,
             "inflow_type": None,
             "flow_relation": None,
             "response_mode": None,
@@ -276,7 +270,7 @@ class AIWorkflow:
             "topic_advisor_tool_results": [],
         }
 
-    async def _safe_save_context(self, state: ConversationState):
+    async def _safe_save_context(self, state: ConversationState) -> None:
         try:
             await self.save_context_node.execute(state)
         except Exception:
@@ -406,7 +400,7 @@ class AIWorkflow:
             return state
 
         if state.get("intent") == INTENT_RECOMMEND:
-            logger.info("Recommendation intent routed directly to topic advisor agent")
+            logger.info("Recommendation intent routed directly to topic advisor")
             try:
                 result_state = await self.topic_advisor_node.execute(state)
                 state.update(result_state)
@@ -423,6 +417,7 @@ class AIWorkflow:
             time.time() - t0,
             state.get("tool_used"),
         )
+
         route = self.router.route_after_function_calling(state)
         node = self.handlers.get(route, default=self.qa_node)
 
@@ -489,7 +484,7 @@ class AIWorkflow:
             return
 
         if state.get("intent") == INTENT_RECOMMEND:
-            logger.info("Streaming recommendation via topic advisor agent")
+            logger.info("Streaming recommendation via topic advisor")
             try:
                 async for token in self.topic_advisor_node.execute_stream(state):
                     yield {"type": "content", "delta": token}
@@ -557,6 +552,7 @@ class AIWorkflow:
             state["purchase_flow"] = purchase_flow
         if aftersales_flow:
             state["aftersales_flow"] = aftersales_flow
+
         yield {"type": "intent", "intent": state.get("intent", INTENT_QA)}
 
         async for event in self.generate_response_stream(state):

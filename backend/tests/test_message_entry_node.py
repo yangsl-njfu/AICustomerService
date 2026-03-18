@@ -174,3 +174,84 @@ class TestMessageEntryNode:
         assert result["inflow_type"] == "irrelevant"
         assert result["flow_relation"] == "interrupt"
         assert result["continue_previous_task"] is False
+
+    @pytest.mark.asyncio
+    async def test_irrelevant_message_can_soft_switch_to_global_qa(self):
+        node = MessageEntryNode()
+        state = _make_state(
+            "中东地区怎么打仗了",
+            last_intent="推荐",
+            active_task={"intent": "推荐", "status": "awaiting_user"},
+            pending_action="select_recommended_item",
+            pending_question="这些里你更喜欢哪一个？",
+        )
+
+        async def fake_understanding(_state):
+            _state["dialogue_act"] = "unclear"
+            _state["domain_intent"] = None
+            _state["self_contained_request"] = False
+            _state["continue_previous_task"] = False
+            _state["slot_updates"] = {}
+            _state["understanding_confidence"] = 0.35
+            return _state
+
+        async def fake_intent(_state):
+            _state["intent"] = "问答"
+            _state["confidence"] = 0.92
+            return _state
+
+        async def fake_inflow_llm(*_args, **_kwargs):
+            return None
+
+        node.inflow_understanding.execute = fake_understanding
+        node.global_intent_classifier.execute = fake_intent
+        node._infer_inflow_with_llm = fake_inflow_llm
+
+        result = await node.execute(state)
+
+        assert result["inflow_type"] == "switch_flow"
+        assert result["intent"] == "问答"
+        assert result["flow_relation"] == "switch"
+
+    @pytest.mark.asyncio
+    async def test_related_question_can_soft_switch_to_global_qa(self):
+        node = MessageEntryNode()
+        state = _make_state(
+            "中东地区怎么打仗了",
+            last_intent="推荐",
+            active_task={"intent": "推荐", "status": "awaiting_user"},
+            pending_action="select_recommended_item",
+            pending_question="这些里你更喜欢哪一个？",
+        )
+
+        async def fake_understanding(_state):
+            _state["dialogue_act"] = "unclear"
+            _state["domain_intent"] = None
+            _state["self_contained_request"] = False
+            _state["continue_previous_task"] = False
+            _state["slot_updates"] = {}
+            _state["understanding_confidence"] = 0.41
+            return _state
+
+        async def fake_inflow_llm(*_args, **_kwargs):
+            return {
+                "inflow_type": "related_question",
+                "domain_intent": None,
+                "continue_previous_task": False,
+                "need_clarification": False,
+                "confidence": 0.86,
+            }
+
+        async def fake_intent(_state):
+            _state["intent"] = "问答"
+            _state["confidence"] = 0.93
+            return _state
+
+        node.inflow_understanding.execute = fake_understanding
+        node._infer_inflow_with_llm = fake_inflow_llm
+        node.global_intent_classifier.execute = fake_intent
+
+        result = await node.execute(state)
+
+        assert result["inflow_type"] == "switch_flow"
+        assert result["intent"] == "问答"

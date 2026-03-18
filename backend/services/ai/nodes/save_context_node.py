@@ -1,34 +1,34 @@
-"""
-上下文保存节点。
+"""上下文保存节点。
 
-需求：
-- 3.1：对话历史超过阈值时触发摘要
-- 3.2：摘要压缩早期历史并保留关键信息
-- 3.3：摘要后保留最近对话原文
-- 3.6：摘要失败时回退到截断策略
-- 3.7：将摘要与对话历史持久化到缓存服务
+职责：
+- 把本轮消息写入会话历史
+- 更新 active_task / pending_action / pending_question
+- 在需要时触发对话摘要压缩
+
+这里是“本轮结束后，下一轮从哪里接”的持久化收口层。
 """
+from __future__ import annotations
+
 import copy
 import logging
+
+from services.redis_cache import redis_cache
+
 from .base import BaseNode
 from ..constants import (
+    RESPONSE_MODE_ANSWER_THEN_RESUME,
     RESPONSE_MODE_CANCEL_CURRENT_TASK,
     RESPONSE_MODE_CLARIFY_BEFORE_RESUME,
     RESPONSE_MODE_HELP_CURRENT_TASK,
 )
 from ..state import ConversationState
 from ..summarizer import ConversationSummarizer
-from services.redis_cache import redis_cache
 
 logger = logging.getLogger(__name__)
 
 
 class SaveContextNode(BaseNode):
-    """在业务节点结束后保存下一轮所需的上下文。
-
-    在骨架设计里，这个节点承担“闭环持久化层”的职责：
-    当前轮的响应会在这里转化为下一轮的起始上下文。
-    """
+    """保存本轮上下文，并为下一轮恢复准备状态。"""
 
     def __init__(self, llm=None):
         super().__init__(llm)
@@ -86,11 +86,11 @@ class SaveContextNode(BaseNode):
             state["pending_action"] = None
             return
 
-        # 推断助手下一步在等什么，便于下一轮用户输入按未完成任务来解释。
         pending_action = self._infer_pending_action(state)
         pending_question = state.get("response", "").strip() if pending_action else None
 
         if response_mode in {
+            RESPONSE_MODE_ANSWER_THEN_RESUME,
             RESPONSE_MODE_CLARIFY_BEFORE_RESUME,
             RESPONSE_MODE_HELP_CURRENT_TASK,
         }:
@@ -108,6 +108,7 @@ class SaveContextNode(BaseNode):
             active_task["resume_mode"] = state.get("resume_mode")
             active_task["resume_pending_action"] = resume_pending_action
             active_task["resume_pending_question"] = resume_pending_question
+            active_task["awaiting_resume_decision"] = response_mode == RESPONSE_MODE_CLARIFY_BEFORE_RESUME
             active_task["last_response"] = state.get("response", "")
             active_task["last_quick_actions"] = copy.deepcopy(state.get("quick_actions") or [])
             active_task["status"] = "awaiting_user"
@@ -120,6 +121,7 @@ class SaveContextNode(BaseNode):
 
         active_task["pending_action"] = pending_action
         active_task["pending_question"] = pending_question
+        active_task["awaiting_resume_decision"] = False
         active_task["last_response"] = state.get("response", "")
         active_task["last_quick_actions"] = copy.deepcopy(state.get("quick_actions") or [])
         active_task["status"] = "awaiting_user" if pending_action else "completed"
@@ -130,17 +132,14 @@ class SaveContextNode(BaseNode):
         state["pending_action"] = pending_action
 
     async def execute(self, state: ConversationState) -> ConversationState:
-        """保存当前轮上下文。"""
         self._update_task_state(state)
 
-        # 先把当前轮对话写入会话历史。
         await redis_cache.add_message_to_context(
             session_id=state["session_id"],
             user_message=state["user_message"],
-            assistant_message=state["response"]
+            assistant_message=state["response"],
         )
 
-        # 同时持久化传统历史字段和多轮对话状态字段。
         await redis_cache.update_context(
             session_id=state["session_id"],
             last_intent=state.get("intent") or (state.get("active_task") or {}).get("intent") or state.get("last_intent"),
@@ -152,7 +151,6 @@ class SaveContextNode(BaseNode):
             pending_action=state.get("pending_action"),
         )
 
-        # 对话变长时，按需触发摘要压缩。
         if self.summarizer:
             context = await redis_cache.get_context(state["session_id"])
             history = context.get("history", [])
@@ -160,22 +158,19 @@ class SaveContextNode(BaseNode):
                 try:
                     result = await self.summarizer.summarize(
                         history,
-                        context.get("conversation_summary", "")
+                        context.get("conversation_summary", ""),
                     )
                     await redis_cache.update_context(
                         session_id=state["session_id"],
                         history=result["remaining_history"],
-                        conversation_summary=result["summary"]
+                        conversation_summary=result["summary"],
                     )
                 except Exception:
-                    logger.warning(
-                        "摘要生成失败，执行回退截断",
-                        exc_info=True
-                    )
+                    logger.warning("摘要生成失败，执行回退截断", exc_info=True)
                     truncated = self.summarizer.fallback_truncate(history)
                     await redis_cache.update_context(
                         session_id=state["session_id"],
-                        history=truncated["remaining_history"]
+                        history=truncated["remaining_history"],
                     )
 
         return state

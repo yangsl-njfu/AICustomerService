@@ -32,12 +32,19 @@ class ConversationState(TypedDict):
 
     # 中间处理态
     entry_classifier: Optional[str]
+    semantic_source: Optional[str]
     has_active_flow: bool
     active_flow: Optional[str]
     current_step: Optional[str]
     expected_user_acts: Optional[List[str]]
+    expected_slot: Optional[str]
+    expected_input_type: Optional[str]
     inflow_type: Optional[str]
     flow_relation: Optional[str]
+    intent_hint: Optional[str]
+    semantic_confidence: Optional[float]
+    policy_action: Optional[str]
+    skill_route: Optional[str]
     response_mode: Optional[str]
     resume_mode: Optional[str]
     dialogue_act: Optional[str]

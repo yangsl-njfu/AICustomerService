@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from collections import Counter
 from datetime import datetime
 from typing import Dict, List
@@ -20,11 +21,17 @@ from ..constants import (
     DIALOGUE_ACT_RESUME_TASK,
     INTENT_DOCUMENT_ANALYSIS,
     INTENT_QA,
+    INTENT_RECOMMEND,
 )
 from ..state import ConversationState
 from .base import BaseNode
 
 logger = logging.getLogger(__name__)
+
+_SMALLTALK_RE = re.compile(
+    r"^(你好|您好|hello|hi|在吗|哈喽|谢谢|感谢|好的|ok|再见|拜拜|早上好|晚上好)[!！。.?？]*$",
+    re.IGNORECASE,
+)
 
 
 def _format_intent_history(intent_history: List[dict], max_entries: int) -> str:
@@ -131,7 +138,20 @@ class IntentRecognitionNode(BaseNode):
         return ChatPromptTemplate.from_messages(messages)
 
     def _match_by_rules(self, message: str) -> tuple[str, float] | None:
-        message_lower = message.lower()
+        text = message.strip()
+        if _SMALLTALK_RE.match(text):
+            logger.info("Rule matched smalltalk intent=qa")
+            return INTENT_QA, 0.99
+
+        if re.search(r"(毕设|毕业设计|课设|选题)", text, re.IGNORECASE):
+            logger.info("Rule matched graduation-project intent=recommend")
+            return INTENT_RECOMMEND, 0.98
+
+        if re.search(r"(找|要|想做|需要).*(项目|源码)", text, re.IGNORECASE):
+            logger.info("Rule matched project-seeking intent=recommend")
+            return INTENT_RECOMMEND, 0.95
+
+        message_lower = text.lower()
         for intent, keywords in self._get_intent_rules().items():
             for keyword in keywords:
                 if keyword and keyword.lower() in message_lower:

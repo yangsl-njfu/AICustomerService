@@ -1,12 +1,16 @@
 """
 FastAPI应用主入口
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config import settings
 from api import api_router
 from services.redis_cache import redis_cache
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -16,20 +20,20 @@ async def lifespan(app: FastAPI):
     settings.validate_runtime_configuration()
     try:
         await redis_cache.connect()
-        print("✅ Redis连接成功")
+        logger.info("Redis连接成功")
     except Exception as e:
         if settings.REDIS_REQUIRED:
             raise
-        print(f"⚠️  Redis连接失败（将使用内存缓存）: {e}")
+        logger.warning("Redis连接失败，将使用内存缓存: %s", e)
     
     yield
     
     # 关闭时
     try:
         await redis_cache.disconnect()
-        print("✅ Redis连接已关闭")
+        logger.info("Redis连接已关闭")
     except Exception as e:
-        print(f"⚠️  Redis断开连接失败: {e}")
+        logger.warning("Redis断开连接失败: %s", e)
 
 
 # 创建FastAPI应用

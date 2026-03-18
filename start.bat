@@ -16,7 +16,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 
 echo.
 echo ========================================
 echo   启动完成！
-echo   后端: http://localhost:8000
+echo   后端: http://localhost:8080
 echo   前端: http://localhost:5173
-echo   API文档: http://localhost:8000/api/docs
+echo   API文档: http://localhost:8080/api/docs
 echo ========================================

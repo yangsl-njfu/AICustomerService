@@ -60,21 +60,33 @@ def _make_state(**overrides):
         "resume_mode": None,
         "continue_previous_task": False,
         "need_clarification": False,
+        "self_contained_request": False,
+        "intent": None,
+        "domain_intent": None,
         "user_message": "我想去旅行",
+        "conversation_history": [],
     }
     state.update(overrides)
     return state
 
 
+class _FakeLLM:
+    def __init__(self, content: str):
+        self.content = content
+
+    async def ainvoke(self, _messages):
+        return types.SimpleNamespace(content=self.content)
+
+
 class TestResponsePlannerNode:
     @pytest.mark.asyncio
-    async def test_irrelevant_input_goes_to_clarify_before_resume(self):
+    async def test_irrelevant_input_goes_to_answer_then_resume(self):
         node = ResponsePlannerNode()
         state = _make_state(inflow_type="irrelevant")
 
         result = await node.execute(state)
 
-        assert result["response_mode"] == "clarify_before_resume"
+        assert result["response_mode"] == "answer_then_resume"
         assert result["resume_mode"] == "resume_exact"
         assert result["continue_previous_task"] is False
 
@@ -83,7 +95,7 @@ class TestResponsePlannerNode:
         node = ResponsePlannerNode()
         state = _make_state(
             inflow_type="related_blocker",
-            user_message="我不会操作这个",
+            user_message="我不会操作这一步",
         )
 
         result = await node.execute(state)
@@ -92,14 +104,55 @@ class TestResponsePlannerNode:
         assert result["resume_mode"] == "resume_from_safe_step"
 
     @pytest.mark.asyncio
+    async def test_unknown_self_contained_message_prefers_answer_then_resume(self):
+        node = ResponsePlannerNode()
+        state = _make_state(
+            inflow_type="unknown",
+            self_contained_request=True,
+            user_message="今天天气真好",
+        )
+
+        result = await node.execute(state)
+
+        assert result["response_mode"] == "answer_then_resume"
+        assert result["resume_mode"] == "resume_exact"
+
+    @pytest.mark.asyncio
+    async def test_unknown_ambiguous_reference_still_clarifies(self):
+        node = ResponsePlannerNode()
+        state = _make_state(
+            inflow_type="unknown",
+            user_message="那个呢",
+        )
+
+        result = await node.execute(state)
+
+        assert result["response_mode"] == "clarify_before_resume"
+        assert result["resume_mode"] == "resume_from_safe_step"
+
+    @pytest.mark.asyncio
     async def test_conversation_control_generates_resume_prompt(self):
         node = ConversationControlNode()
         state = _make_state(
             response_mode="clarify_before_resume",
             resume_mode="resume_exact",
+            user_message="那个呢",
         )
 
         result = await node.execute(state)
 
-        assert "继续刚才的推荐任务" in result["response"]
-        assert "直接接回刚才停住的位置" in result["response"]
+        assert "那个呢" in result["response"]
+        assert "第一个" in result["response"]
+        assert "切换" not in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_conversation_control_answers_side_topic_naturally(self):
+        node = ConversationControlNode(llm=_FakeLLM("这句我先接住，刚才那个推荐我也还记着。"))
+        state = _make_state(
+            response_mode="answer_then_resume",
+            user_message="今天天气真好",
+        )
+
+        result = await node.execute(state)
+
+        assert "刚才那个推荐" in result["response"]

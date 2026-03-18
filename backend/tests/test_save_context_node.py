@@ -332,3 +332,36 @@ async def test_cancel_control_response_clears_active_task():
     assert state["active_task"] is None
     assert state["pending_question"] is None
     assert state["pending_action"] is None
+
+
+@pytest.mark.asyncio
+async def test_answer_then_resume_preserves_original_resume_position():
+    node = SaveContextNode(llm=None)
+    state = _make_state(
+        response="这句我先接住，刚才那个推荐我还记着。",
+        response_mode="answer_then_resume",
+        resume_mode="resume_exact",
+        pending_question="这些里你更喜欢哪一个？",
+        pending_action="select_recommended_item",
+        active_task={
+            "id": "task-1",
+            "intent": "推荐",
+            "status": "awaiting_user",
+            "slots": {"language": "Java"},
+            "pending_question": "这些里你更喜欢哪一个？",
+            "pending_action": "select_recommended_item",
+        },
+    )
+
+    mock_cache = MagicMock()
+    mock_cache.add_message_to_context = AsyncMock()
+    mock_cache.update_context = AsyncMock()
+
+    with patch.object(_node_mod, "redis_cache", mock_cache):
+        await node.execute(state)
+
+    assert state["pending_action"] == "select_recommended_item"
+    assert state["pending_question"] == "这些里你更喜欢哪一个？"
+    assert state["active_task"]["resume_mode"] == "resume_exact"
+    assert state["active_task"]["resume_pending_action"] == "select_recommended_item"
+    assert state["active_task"]["awaiting_resume_decision"] is False

@@ -23,6 +23,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from .base import BaseNode
 from .intent_node import IntentRecognitionNode
 from .turn_understanding_node import TurnUnderstandingNode
+from ..memory_builder import MemoryContextBuilder
 from ..constants import (
     DIALOGUE_ACT_NEW_REQUEST,
     DIALOGUE_ACT_REJECT,
@@ -61,6 +62,7 @@ class MessageEntryNode(BaseNode):
         super().__init__(llm=llm, runtime=runtime)
         self.global_intent_classifier = IntentRecognitionNode(llm=llm, runtime=runtime)
         self.inflow_understanding = TurnUnderstandingNode(llm=llm, runtime=runtime)
+        self.memory_builder = MemoryContextBuilder()
 
     def _reset_entry_fields(self, state: ConversationState) -> None:
         state["entry_classifier"] = None
@@ -167,13 +169,8 @@ class MessageEntryNode(BaseNode):
         self.global_intent_classifier._append_intent_history(state, intent_history, intent, confidence)
 
     def _format_recent_history(self, history: List[Dict[str, Any]], limit: int = 3) -> str:
-        if not history:
-            return "(none)"
-        lines: List[str] = []
-        for turn in history[-limit:]:
-            lines.append(f"user: {turn.get('user', '')}")
-            lines.append(f"assistant: {turn.get('assistant', '')}")
-        return "\n".join(lines)
+        formatted = self.memory_builder.build_recent_history_text(history, limit=max(limit, 6))
+        return formatted.replace("用户：", "user: ").replace("助手：", "assistant: ")
 
     def _extract_json_block(self, text: str) -> Optional[str]:
         if not text:
@@ -248,6 +245,7 @@ class MessageEntryNode(BaseNode):
             "expected_user_acts": expected_user_acts,
             "rule_guess": rule_guess,
             "recent_history": self._format_recent_history(state.get("conversation_history") or []),
+            "task_snapshot": self.memory_builder.build_task_snapshot_text(state),
         }
         try:
             response = await self.llm.ainvoke(
@@ -288,6 +286,8 @@ class MessageEntryNode(BaseNode):
         if not state.get("self_contained_request"):
             return False
         if not hinted_intent:
+            return False
+        if hinted_intent == INTENT_QA:
             return False
         return hinted_intent != active_flow
 
@@ -352,6 +352,8 @@ class MessageEntryNode(BaseNode):
             return None
         if intent == active_flow:
             return None
+        if intent == INTENT_QA:
+            return None
 
         result["entry_classifier"] = ENTRY_CLASSIFIER_INFLOW
         result["has_active_flow"] = True
@@ -384,14 +386,17 @@ class MessageEntryNode(BaseNode):
     ) -> ConversationState:
         state["inflow_type"] = inflow_type
         state["self_contained_request"] = False
-        state["continue_previous_task"] = inflow_type in {
-            INFLOW_VALID_CURRENT_INPUT,
-            INFLOW_CORRECTION,
-            INFLOW_RELATED_QUESTION,
-        }
+        if inflow_type in {INFLOW_VALID_CURRENT_INPUT, INFLOW_CORRECTION}:
+            state["continue_previous_task"] = True
+        elif inflow_type == INFLOW_RELATED_QUESTION:
+            state["continue_previous_task"] = bool(state.get("continue_previous_task"))
+        else:
+            state["continue_previous_task"] = False
 
-        if inflow_type in {INFLOW_VALID_CURRENT_INPUT, INFLOW_CORRECTION, INFLOW_RELATED_QUESTION}:
+        if inflow_type in {INFLOW_VALID_CURRENT_INPUT, INFLOW_CORRECTION}:
             state["flow_relation"] = "continue"
+        elif inflow_type == INFLOW_RELATED_QUESTION:
+            state["flow_relation"] = "continue" if state.get("continue_previous_task") else "interrupt"
         elif inflow_type == INFLOW_RELATED_BLOCKER:
             state["flow_relation"] = "pause"
         elif inflow_type == INFLOW_CANCEL_FLOW:
@@ -407,12 +412,13 @@ class MessageEntryNode(BaseNode):
             state["confidence"] = float(state.get("understanding_confidence") or 0.3)
             return state
 
-        if active_flow and inflow_type in {
+        should_bind_active_flow = inflow_type in {
             INFLOW_VALID_CURRENT_INPUT,
             INFLOW_CORRECTION,
-            INFLOW_RELATED_QUESTION,
             INFLOW_RELATED_BLOCKER,
-        }:
+        } or (inflow_type == INFLOW_RELATED_QUESTION and state.get("continue_previous_task"))
+
+        if active_flow and should_bind_active_flow:
             confidence = float(state.get("confidence") or state.get("understanding_confidence") or 0.88)
             state["intent"] = active_flow
             state["confidence"] = confidence
@@ -489,6 +495,7 @@ class MessageEntryNode(BaseNode):
             inflow_type = llm_result["inflow_type"]
             state["inflow_type"] = inflow_type
             state["domain_intent"] = state.get("domain_intent") or llm_result.get("domain_intent")
+            state["continue_previous_task"] = llm_result.get("continue_previous_task", state.get("continue_previous_task"))
             state["need_clarification"] = llm_result["need_clarification"]
             if llm_result.get("confidence") is not None:
                 state["understanding_confidence"] = llm_result["confidence"]

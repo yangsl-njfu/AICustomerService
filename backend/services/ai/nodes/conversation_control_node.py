@@ -1,21 +1,15 @@
-"""会话控制回复节点。
-
-当入口层已经判断“这轮不应该直接推进业务技能”时，
-由这里统一生成：
-
-- 侧话题的自然接话回复
-- 主任务卡住时的帮助回复
-- 取消任务后的收口回复
-- 少量必要的澄清回复
-"""
+"""会话控制回复节点。"""
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from .base import BaseNode
+from ..memory_builder import MemoryContextBuilder
 from ..constants import (
+    INTENT_RECOMMEND,
     RESPONSE_MODE_ANSWER_THEN_RESUME,
     RESPONSE_MODE_CANCEL_CURRENT_TASK,
     RESPONSE_MODE_CLARIFY_BEFORE_RESUME,
@@ -33,13 +27,22 @@ _STEP_HINTS = {
     "select_order": "您要处理的是哪一个订单",
     "select_coupon": "想使用哪一张优惠券",
     "select_address": "收货地址该怎么选",
-    "answer_follow_up": "上一个问题还差哪部分信息",
+    "answer_follow_up": "上一轮还差哪部分信息",
     "choose_next_step": "下一步想继续哪种操作",
 }
+
+_SOCIAL_MESSAGE_RE = re.compile(
+    r"^(你好|您好|hello|hi|在吗|哈哈|哈喽|谢谢|感谢|辛苦了|好的|ok|再见|拜拜)[!！。.\s]*$",
+    re.IGNORECASE,
+)
 
 
 class ConversationControlNode(BaseNode):
     """生成打断、接话、帮助、取消时的统一回复。"""
+
+    def __init__(self, llm=None, runtime=None):
+        super().__init__(llm=llm, runtime=runtime)
+        self.memory_builder = MemoryContextBuilder()
 
     def _build_reference_clarification(self, state: ConversationState, step_hint: Optional[str]) -> str:
         user_message = (state.get("user_message") or "").strip()
@@ -48,7 +51,7 @@ class ConversationControlNode(BaseNode):
         if state.get("current_step") == "select_recommended_item":
             return (
                 f"{quoted}里指的对象我还没对上。"
-                "你可以直接说“第一个”“第二个”或者“那个 Python 的”，我就顺着接下去。"
+                "你可以直接说“第一个”“第二个”，或者说“那个 Java 的”，我就能顺着接下去。"
             )
 
         if step_hint:
@@ -59,7 +62,7 @@ class ConversationControlNode(BaseNode):
 
         return (
             f"{quoted}里有个指代我还没完全对上。"
-            "你把对象或想问的内容再说具体一点，我就直接接着回答。"
+            "你把对象或者想问的内容再说具体一点，我就直接接着回复。"
         )
 
     def _flow_label(self, state: ConversationState) -> str:
@@ -79,45 +82,79 @@ class ConversationControlNode(BaseNode):
             return pending_question
         return None
 
-    def _recent_history(self, state: ConversationState, limit: int = 3) -> str:
-        history = state.get("conversation_history") or []
-        if not history:
-            return "(无)"
+    def _is_simple_social_message(self, state: ConversationState) -> bool:
+        message = (state.get("user_message") or "").strip()
+        return bool(_SOCIAL_MESSAGE_RE.match(message))
 
-        lines = []
-        for turn in history[-limit:]:
-            lines.append(f"用户：{turn.get('user', '')}")
-            lines.append(f"助手：{turn.get('assistant', '')}")
-        return "\n".join(lines)
+    def _business_name(self, state: ConversationState) -> str:
+        execution_context = state.get("execution_context") or {}
+        if isinstance(execution_context, dict):
+            business_name = execution_context.get("business_name")
+            if business_name:
+                return business_name
+
+        if self.runtime is not None:
+            business_pack = getattr(self.runtime, "business_pack", None)
+            if business_pack is not None:
+                return getattr(business_pack, "business_name", "") or "当前业务"
+
+        return "当前业务"
+
+    def _build_topic_advisor_fallback_reply(self, state: ConversationState) -> str:
+        active_task = state.get("active_task") or {}
+        slots = active_task.get("slots") or {}
+        language = slots.get("language")
+        language_hint = f"刚才我们在看 {language} 项目，" if language else ""
+        return (
+            "这个话题我先简短接一下，不过我这边主要还是帮您做毕业设计项目推荐。"
+            f"{language_hint}回到刚才的项目选择，您更在意技术栈、预算还是难度？"
+        )
+
+    def _build_generic_fallback_reply(self, state: ConversationState, flow_label: str) -> str:
+        business_name = self._business_name(state)
+        return (
+            f"这个我先简短接一下，不过我这边主要还是处理 {business_name} 相关内容。"
+            f"回到刚才的{flow_label}，您可以直接顺着上一条继续说，我接着帮您处理。"
+        )
+
+    def _build_scope_redirect_reply(self, state: ConversationState, flow_label: str) -> str:
+        if state.get("active_flow") == INTENT_RECOMMEND:
+            return self._build_topic_advisor_fallback_reply(state)
+        return self._build_generic_fallback_reply(state, flow_label)
 
     async def _generate_side_topic_reply(self, state: ConversationState, flow_label: str, step_hint: Optional[str]) -> str:
         if self.llm is None:
-            return (
-                f"我先接住你这句。刚才的{flow_label}我还替你记着，"
-                "后面你想继续时，直接顺着说就可以。"
-            )
+            return self._build_scope_redirect_reply(state, flow_label)
+
+        short_term_memory = self.memory_builder.build_short_term_memory_text(state)
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    """你是一个自然、灵动的中文 AI 助手。
+                    """你是一个自然、克制、会收主线的中文 AI 助手。
+当前有一个尚未完成的主任务，用户这轮临时插入了别的话题。
 
-当前上下文里有一个尚未完成的主任务，但用户这一轮临时聊到了别的话题。
 你的目标：
-1. 先自然接住用户当前这句话，像正常聊天一样回复。
-2. 不要逼用户做“继续还是切换”的二选一。
-3. 可以很轻地带一句“刚才那个任务我还记着”，但不要重复追问。
-4. 如果当前消息像闲聊、感叹、顺手提问，就优先自然接话。
-5. 回复控制在 2 到 4 句，中文自然口语化。
-6. 如果你对事实并不确定，就别编造得过于绝对。""",
+1. 先自然接住用户当前这句话，给出简短、有帮助的回应。
+2. 如果这是明显离开主任务的侧话题，只做高层、简短回答，不要深聊成一个新任务。
+3. 回复控制在 2 到 4 句，尽量短。
+4. 最后一句主动拉回刚才的主任务，或者顺势追问一个推进主任务的问题。
+5. 不要让用户做“继续还是切换”的二选一，也不要完全忘掉主任务。
+6. 如果你对事实不确定，就给稳妥、泛化的建议，不要编造细节。
+
+风格要求：
+- 像真人顺手接话，但始终记得主任务。
+- 可以有一句轻微过渡，例如“顺带说一句”“先简单说下”。
+- 禁止把侧话题展开成长篇回答。
+- 对于“你好/谢谢/在吗”这类轻寒暄，可以更简短。""",
                 ),
                 (
                     "human",
-                    """当前主任务：{flow_label}
+                    """当前业务：{business_name}
+当前主任务：{flow_label}
 当前停留点：{step_hint}
-最近对话：
-{history}
+短期记忆：{short_term_memory}
 
 用户这一轮说：{message}
 
@@ -128,9 +165,10 @@ class ConversationControlNode(BaseNode):
 
         response = await self.llm.ainvoke(
             prompt.format_messages(
+                business_name=self._business_name(state),
                 flow_label=flow_label,
                 step_hint=step_hint or "未显式记录",
-                history=self._recent_history(state),
+                short_term_memory=short_term_memory,
                 message=state.get("user_message", ""),
             )
         )
@@ -172,7 +210,7 @@ class ConversationControlNode(BaseNode):
 
         state["response"] = (
             f"我先把刚才的{flow_label}保留着。"
-            "你想继续就顺着说，想聊新的内容我也能直接接住。"
+            "你想继续就顺着说，想补充新的信息我也能接着处理。"
         )
         state["quick_actions"] = None
         return state

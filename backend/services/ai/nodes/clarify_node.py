@@ -1,13 +1,20 @@
 """
 澄清意图节点
 """
+from __future__ import annotations
+
 from .base import BaseNode
+from ..memory_builder import MemoryContextBuilder
 from ..state import ConversationState
 from langchain_core.prompts import ChatPromptTemplate
 
 
 class ClarifyNode(BaseNode):
     """澄清意图节点"""
+
+    def __init__(self, llm=None):
+        super().__init__(llm=llm)
+        self.memory_builder = MemoryContextBuilder()
     
     async def execute(self, state: ConversationState) -> ConversationState:
         """执行意图澄清"""
@@ -19,20 +26,18 @@ class ClarifyNode(BaseNode):
 3. 邀请用户详细说明需求
 4. 不要机械地列1、2、3，而是融入对话中"""),
             ("human", """用户消息：{message}
-历史对话：{history}
+短期记忆：{short_term_memory}
 
 请自然地询问用户需要什么帮助：""")
-        ])
-
-        history_str = "\n".join([
-            f"用户：{turn['user']}\n助手：{turn['assistant']}"
-            for turn in state["conversation_history"][-3:]
         ])
 
         response = await self.llm.ainvoke(
             prompt.format_messages(
                 message=state["user_message"],
-                history=history_str
+                short_term_memory=self.memory_builder.build_short_term_memory_text(
+                    state,
+                    include_task_snapshot=True,
+                ),
             )
         )
 
@@ -49,19 +54,17 @@ class ClarifyNode(BaseNode):
 3. 邀请用户详细说明需求
 4. 不要机械地列1、2、3，而是融入对话中"""),
             ("human", """用户消息：{message}
-历史对话：{history}
+短期记忆：{short_term_memory}
 
 请自然地询问用户需要什么帮助：""")
         ])
 
-        history_str = "\n".join([
-            f"用户：{turn['user']}\n助手：{turn['assistant']}"
-            for turn in state["conversation_history"][-3:]
-        ])
-
         messages = prompt.format_messages(
             message=state["user_message"],
-            history=history_str
+            short_term_memory=self.memory_builder.build_short_term_memory_text(
+                state,
+                include_task_snapshot=True,
+            ),
         )
 
         full_response = ""

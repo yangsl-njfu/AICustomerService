@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from .base import BaseNode
+from ..memory_builder import MemoryContextBuilder
 from ..constants import (
     DEFAULT_INTENT_RULES,
     DIALOGUE_ACT_CONFIRM,
@@ -96,6 +97,10 @@ class TurnUnderstandingNode(BaseNode):
         DIALOGUE_ACT_SWITCH_TOPIC,
         DIALOGUE_ACT_UNCLEAR,
     }
+
+    def __init__(self, llm=None, runtime=None):
+        super().__init__(llm=llm, runtime=runtime)
+        self.memory_builder = MemoryContextBuilder()
 
     def _assistant_requires_follow_up(self, assistant_message: str) -> bool:
         if not assistant_message:
@@ -227,13 +232,7 @@ class TurnUnderstandingNode(BaseNode):
         return ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{input_payload}")])
 
     def _format_recent_history(self, history: List[Dict[str, Any]], limit: int = 3) -> str:
-        if not history:
-            return "（无）"
-        lines = []
-        for turn in history[-limit:]:
-            lines.append(f"用户：{turn.get('user', '')}")
-            lines.append(f"助手：{turn.get('assistant', '')}")
-        return "\n".join(lines)
+        return self.memory_builder.build_recent_history_text(history, limit=max(limit, 6))
 
     def _extract_json_block(self, text: str) -> Optional[str]:
         if not text:
@@ -339,6 +338,7 @@ class TurnUnderstandingNode(BaseNode):
                 "pending_question": state.get("pending_question"),
                 "last_quick_actions_count": len(state.get("last_quick_actions") or []),
                 "recent_history": self._format_recent_history(state.get("conversation_history") or []),
+                "task_snapshot": self.memory_builder.build_task_snapshot_text(state),
                 "rule_guess": {
                     "dialogue_act": dialogue_act,
                     "domain_intent": domain_intent,

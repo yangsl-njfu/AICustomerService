@@ -78,6 +78,16 @@ class _FakeLLM:
         return types.SimpleNamespace(content=self.content)
 
 
+class _CapturingLLM:
+    def __init__(self, content: str):
+        self.content = content
+        self.messages = None
+
+    async def ainvoke(self, messages):
+        self.messages = messages
+        return types.SimpleNamespace(content=self.content)
+
+
 class TestResponsePlannerNode:
     @pytest.mark.asyncio
     async def test_irrelevant_input_goes_to_answer_then_resume(self):
@@ -156,3 +166,30 @@ class TestResponsePlannerNode:
         result = await node.execute(state)
 
         assert "刚才那个推荐" in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_conversation_control_includes_short_term_memory_in_prompt(self):
+        llm = _CapturingLLM("我先接住这个话题。")
+        node = ConversationControlNode(llm=llm)
+        state = _make_state(
+            response_mode="answer_then_resume",
+            user_message="那新疆是不是更冷",
+            conversation_history=[
+                {"user": "天气真冷啊", "assistant": "是啊，这两天降温挺明显的。"},
+                {"user": "我要去新疆旅行", "assistant": "新疆昼夜温差会比较大。"},
+            ],
+            active_task={
+                "intent": "推荐",
+                "status": "awaiting_user",
+                "slots": {"language": "Python"},
+                "pending_question": "这些里你更喜欢哪一个？",
+                "pending_action": "select_recommended_item",
+            },
+        )
+
+        await node.execute(state)
+
+        prompt_text = "\n".join(getattr(message, "content", "") for message in llm.messages)
+        assert "短期记忆：" in prompt_text
+        assert "我要去新疆旅行" in prompt_text
+        assert "当前主任务：推荐" in prompt_text

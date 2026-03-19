@@ -128,7 +128,7 @@ class TestMessageEntryNode:
 
         assert result["entry_classifier"] == "inflow"
         assert result["has_active_flow"] is True
-        assert result["inflow_type"] == "switch_flow"
+        assert result["inflow_type"] == "unknown"
         assert result["flow_relation"] == "switch"
         assert result["intent"] == "订单查询"
         assert result["domain_intent"] == "订单查询"

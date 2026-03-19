@@ -13,9 +13,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api/chat/stream': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8000',
         changeOrigin: true,
-        // SSE 流式接口：禁用代理缓冲，确保 token 实时到达前端
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             proxyRes.headers['cache-control'] = 'no-cache'
@@ -24,7 +23,7 @@ export default defineConfig({
         }
       },
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8000',
         changeOrigin: true
       }
     }

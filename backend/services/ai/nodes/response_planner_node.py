@@ -56,9 +56,20 @@ class ResponsePlannerNode(BaseNode):
 
         inflow_type = state.get("inflow_type")
 
-        if inflow_type in {INFLOW_VALID_CURRENT_INPUT, INFLOW_CORRECTION, INFLOW_RELATED_QUESTION}:
+        if inflow_type in {INFLOW_VALID_CURRENT_INPUT, INFLOW_CORRECTION}:
             state["response_mode"] = RESPONSE_MODE_CONTINUE_CURRENT_TASK
             state["resume_mode"] = RESUME_MODE_RESUME_EXACT
+            return state
+
+        if inflow_type == INFLOW_RELATED_QUESTION:
+            if state.get("continue_previous_task"):
+                state["response_mode"] = RESPONSE_MODE_CONTINUE_CURRENT_TASK
+                state["resume_mode"] = RESUME_MODE_RESUME_EXACT
+            else:
+                state["response_mode"] = RESPONSE_MODE_ANSWER_THEN_RESUME
+                state["resume_mode"] = RESUME_MODE_RESUME_EXACT
+                state["continue_previous_task"] = False
+                state["need_clarification"] = False
             return state
 
         if inflow_type == INFLOW_RELATED_BLOCKER:

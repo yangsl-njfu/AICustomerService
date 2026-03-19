@@ -17,33 +17,22 @@ import logging
 import time
 from dataclasses import asdict
 from datetime import datetime
+from importlib import import_module
 from typing import Any, Dict, Optional
-
-from langgraph.graph import END, StateGraph
 
 from config import init_chat_model, init_intent_model
 
 from .constants import CONTROL_RESPONSE_MODES, INTENT_QA, INTENT_RECOMMEND
 from .handler_registry import HandlerRegistry
 from .nodes import (
-    AftersalesFlowNode,
-    ClarifyNode,
     ContextNode,
     ConversationControlNode,
     DialogueStateNode,
-    DocumentNode,
     FunctionCallingNode,
     MessageEntryNode,
-    OrderQueryNode,
     PolicyNode,
-    ProductInquiryNode,
-    PurchaseFlowNode,
-    PurchaseGuideNode,
-    QANode,
     ResponsePlannerNode,
     SaveContextNode,
-    TicketNode,
-    TopicAdvisorNode,
 )
 from .router import Router
 from .runtime import runtime_factory
@@ -69,114 +58,115 @@ class AIWorkflow:
         self.dialogue_state_node = DialogueStateNode()
         self.function_calling_node = FunctionCallingNode(self.llm, runtime=self.runtime)
         self.save_context_node = SaveContextNode(self.llm)
-
-        self.qa_node = QANode(self.llm, runtime=self.runtime)
-        self.document_node = DocumentNode(self.llm)
-        self.ticket_node = TicketNode(self.llm)
-        self.clarify_node = ClarifyNode(self.llm)
-        self.product_inquiry_node = ProductInquiryNode(self.llm)
-        self.order_query_node = OrderQueryNode(self.llm)
-        self.purchase_guide_node = PurchaseGuideNode(self.llm)
-        self.purchase_flow_node = PurchaseFlowNode()
-        self.aftersales_flow_node = AftersalesFlowNode()
-        self.topic_advisor_node = TopicAdvisorNode(self.llm, runtime=self.runtime)
+        self._lazy_nodes: Dict[str, Any] = {}
 
         self.handlers = HandlerRegistry()
         self._register_builtin_handlers()
-        self.graph = self._build_graph()
+        self.graph = None
 
     def _register_builtin_handlers(self) -> None:
-        self.handlers.register("qa_flow", self.qa_node, stream_enabled=True)
-        self.handlers.register("ticket_flow", self.ticket_node)
-        self.handlers.register("document_analysis", self.document_node, stream_enabled=True)
-        self.handlers.register("clarify", self.clarify_node, stream_enabled=True)
-        self.handlers.register("product_inquiry", self.product_inquiry_node)
-        self.handlers.register("order_query", self.order_query_node)
-        self.handlers.register("purchase_guide", self.purchase_guide_node, stream_enabled=True)
-        self.handlers.register("aftersales_flow", self.aftersales_flow_node)
-        self.handlers.register("topic_advisor", self.topic_advisor_node, stream_enabled=True)
+        self.handlers.register("qa_flow", factory=self._get_qa_node, stream_enabled=True)
+        self.handlers.register("ticket_flow", factory=self._get_ticket_node)
+        self.handlers.register("document_analysis", factory=self._get_document_node, stream_enabled=True)
+        self.handlers.register("clarify", factory=self._get_clarify_node, stream_enabled=True)
+        self.handlers.register("product_inquiry", factory=self._get_product_inquiry_node)
+        self.handlers.register("order_query", factory=self._get_order_query_node)
+        self.handlers.register("purchase_guide", factory=self._get_purchase_guide_node, stream_enabled=True)
+        self.handlers.register("aftersales_flow", factory=self._get_aftersales_flow_node)
+        self.handlers.register("topic_advisor", factory=self._get_topic_advisor_node, stream_enabled=True)
 
-    def _build_graph(self):
-        workflow = StateGraph(ConversationState)
+    def _get_or_create_node(self, key: str, factory):
+        node = self._lazy_nodes.get(key)
+        if node is None:
+            node = factory()
+            self._lazy_nodes[key] = node
+        return node
 
-        workflow.add_node("load_context", self.context_node.execute)
-        workflow.add_node("message_entry", self.message_entry_node.execute)
-        workflow.add_node("response_planner", self.response_planner_node.execute)
-        workflow.add_node("conversation_control", self.conversation_control_node.execute)
-        workflow.add_node("policy", self.policy_node.execute)
-        workflow.add_node("dialogue_state", self.dialogue_state_node.execute)
-        workflow.add_node("function_calling", self.function_calling_node.execute)
-        workflow.add_node("save_context", self.save_context_node.execute)
-
-        workflow.add_node("qa_flow", self.qa_node.execute)
-        workflow.add_node("document_analysis", self.document_node.execute)
-        workflow.add_node("ticket_flow", self.ticket_node.execute)
-        workflow.add_node("clarify", self.clarify_node.execute)
-        workflow.add_node("product_inquiry", self.product_inquiry_node.execute)
-        workflow.add_node("order_query", self.order_query_node.execute)
-        workflow.add_node("purchase_guide", self.purchase_guide_node.execute)
-        workflow.add_node("topic_advisor", self.topic_advisor_node.execute)
-        workflow.add_node("aftersales_flow", self.aftersales_flow_node.execute)
-
-        workflow.set_entry_point("load_context")
-        workflow.add_edge("load_context", "message_entry")
-        workflow.add_edge("message_entry", "response_planner")
-        workflow.add_conditional_edges(
-            "response_planner",
-            self._route_after_response_planner,
-            {
-                "conversation_control": "conversation_control",
-                "policy": "policy",
-            },
-        )
-        workflow.add_conditional_edges(
-            "policy",
-            self._route_after_understanding,
-            {
-                "dialogue_state": "dialogue_state",
-                "clarify": "clarify",
-            },
-        )
-        workflow.add_edge("dialogue_state", "function_calling")
-        workflow.add_conditional_edges(
-            "function_calling",
-            self.router.route_after_function_calling,
-            {
-                "qa_flow": "qa_flow",
-                "ticket_flow": "ticket_flow",
-                "document_analysis": "document_analysis",
-                "product_inquiry": "product_inquiry",
-                "purchase_guide": "purchase_guide",
-                "order_query": "order_query",
-                "topic_advisor": "topic_advisor",
-                "aftersales_flow": "aftersales_flow",
-                "clarify": "clarify",
-            },
+    def _instantiate_node(self, key: str, module_path: str, class_name: str, *args, **kwargs):
+        return self._get_or_create_node(
+            key,
+            lambda: getattr(import_module(module_path), class_name)(*args, **kwargs),
         )
 
-        workflow.add_edge("conversation_control", "save_context")
-        workflow.add_edge("qa_flow", "save_context")
-        workflow.add_edge("ticket_flow", "save_context")
-        workflow.add_edge("document_analysis", "save_context")
-        workflow.add_edge("product_inquiry", "save_context")
-        workflow.add_edge("purchase_guide", "save_context")
-        workflow.add_edge("order_query", "save_context")
-        workflow.add_edge("topic_advisor", "save_context")
-        workflow.add_edge("aftersales_flow", "save_context")
+    def _get_qa_node(self):
+        return self._instantiate_node(
+            "qa_flow",
+            "services.ai.nodes.qa_node",
+            "QANode",
+            self.llm,
+            runtime=self.runtime,
+        )
 
-        workflow.add_edge("clarify", END)
-        workflow.add_edge("save_context", END)
-        return workflow.compile()
+    def _get_document_node(self):
+        return self._instantiate_node(
+            "document_analysis",
+            "services.ai.nodes.document_node",
+            "DocumentNode",
+            self.llm,
+        )
 
-    def _route_after_response_planner(self, state: ConversationState) -> str:
-        if self._should_use_conversation_control(state):
-            return "conversation_control"
-        return "policy"
+    def _get_ticket_node(self):
+        return self._instantiate_node(
+            "ticket_flow",
+            "services.ai.nodes.ticket_node",
+            "TicketNode",
+            self.llm,
+        )
 
-    def _route_after_understanding(self, state: ConversationState) -> str:
-        if self._should_clarify(state):
-            return "clarify"
-        return "dialogue_state"
+    def _get_clarify_node(self):
+        return self._instantiate_node(
+            "clarify",
+            "services.ai.nodes.clarify_node",
+            "ClarifyNode",
+            self.llm,
+        )
+
+    def _get_product_inquiry_node(self):
+        return self._instantiate_node(
+            "product_inquiry",
+            "services.ai.nodes.product_inquiry_node",
+            "ProductInquiryNode",
+            self.llm,
+        )
+
+    def _get_order_query_node(self):
+        return self._instantiate_node(
+            "order_query",
+            "services.ai.nodes.order_query_node",
+            "OrderQueryNode",
+            self.llm,
+        )
+
+    def _get_purchase_guide_node(self):
+        return self._instantiate_node(
+            "purchase_guide",
+            "services.ai.nodes.purchase_guide_node",
+            "PurchaseGuideNode",
+            self.llm,
+        )
+
+    def _get_purchase_flow_node(self):
+        return self._instantiate_node(
+            "purchase_flow",
+            "services.ai.nodes.purchase_flow_node",
+            "PurchaseFlowNode",
+        )
+
+    def _get_aftersales_flow_node(self):
+        return self._instantiate_node(
+            "aftersales_flow",
+            "services.ai.nodes.aftersales_flow_node",
+            "AftersalesFlowNode",
+        )
+
+    def _get_topic_advisor_node(self):
+        return self._instantiate_node(
+            "topic_advisor",
+            "services.ai.nodes.topic_advisor_node",
+            "TopicAdvisorNode",
+            self.llm,
+            runtime=self.runtime,
+        )
 
     def _should_use_conversation_control(self, state: ConversationState) -> bool:
         return state.get("response_mode") in CONTROL_RESPONSE_MODES
@@ -276,7 +266,7 @@ class AIWorkflow:
         except Exception:
             logger.warning("Failed to persist conversation context", exc_info=True)
 
-    async def process_message(
+    async def _load_context_only(
         self,
         user_id: str,
         session_id: str,
@@ -284,9 +274,8 @@ class AIWorkflow:
         attachments=None,
         purchase_flow=None,
         aftersales_flow=None,
-    ):
-        start_time = datetime.now()
-        initial_state = self._make_initial_state(
+    ) -> ConversationState:
+        state = self._make_initial_state(
             user_id=user_id,
             session_id=session_id,
             message=message,
@@ -294,19 +283,11 @@ class AIWorkflow:
             purchase_flow=purchase_flow,
             aftersales_flow=aftersales_flow,
         )
+        return await self.context_node.execute(state)
 
-        if purchase_flow or aftersales_flow:
-            final_state = await self.generate_response(initial_state)
-        else:
-            final_state = await self.graph.ainvoke(initial_state)
-
-        final_state["processing_time"] = (datetime.now() - start_time).total_seconds()
-        return final_state
-
-    async def prepare_intent(self, user_id, session_id, message, attachments=None):
-        logger.info("Preparing intent for session=%s", session_id)
+    async def _run_prepare_pipeline(self, state: ConversationState) -> ConversationState:
+        logger.info("Preparing intent for session=%s", state.get("session_id"))
         total_start = time.time()
-        state = self._make_initial_state(user_id, session_id, message, attachments)
 
         t0 = time.time()
         state = await self.context_node.execute(state)
@@ -347,6 +328,10 @@ class AIWorkflow:
             state.get("need_clarification"),
         )
 
+        if self._should_clarify(state):
+            logger.info("prepare_intent completed in %.2fs via clarify", time.time() - total_start)
+            return state
+
         t0 = time.time()
         state = await self.dialogue_state_node.execute(state)
         logger.info(
@@ -359,12 +344,63 @@ class AIWorkflow:
         logger.info("prepare_intent completed in %.2fs", time.time() - total_start)
         return state
 
+    async def process_message(
+        self,
+        user_id: str,
+        session_id: str,
+        message: str,
+        attachments=None,
+        purchase_flow=None,
+        aftersales_flow=None,
+    ):
+        start_time = datetime.now()
+        if purchase_flow or aftersales_flow:
+            final_state = await self._load_context_only(
+                user_id=user_id,
+                session_id=session_id,
+                message=message,
+                attachments=attachments,
+                purchase_flow=purchase_flow,
+                aftersales_flow=aftersales_flow,
+            )
+            final_state = await self.generate_response(final_state)
+        else:
+            prepared_state = await self.prepare_intent(
+                user_id=user_id,
+                session_id=session_id,
+                message=message,
+                attachments=attachments,
+            )
+            final_state = await self.generate_response(prepared_state)
+
+        final_state["processing_time"] = (datetime.now() - start_time).total_seconds()
+        return final_state
+
+    async def prepare_intent(
+        self,
+        user_id,
+        session_id,
+        message,
+        attachments=None,
+        purchase_flow=None,
+        aftersales_flow=None,
+    ):
+        state = self._make_initial_state(
+            user_id=user_id,
+            session_id=session_id,
+            message=message,
+            attachments=attachments,
+            purchase_flow=purchase_flow,
+            aftersales_flow=aftersales_flow,
+        )
+        return await self._run_prepare_pipeline(state)
+
     async def generate_response(self, state):
         purchase_flow = state.get("purchase_flow")
         if purchase_flow:
             logger.info("Purchase flow detected step=%s", purchase_flow.get("step"))
             try:
-                result_state = await self.purchase_flow_node.execute(state)
+                result_state = await self._get_purchase_flow_node().execute(state)
                 state.update(result_state)
                 await self._safe_save_context(state)
                 return state
@@ -377,7 +413,7 @@ class AIWorkflow:
         if aftersales_flow:
             logger.info("Aftersales flow detected step=%s", aftersales_flow.get("step"))
             try:
-                result_state = await self.aftersales_flow_node.execute(state)
+                result_state = await self._get_aftersales_flow_node().execute(state)
                 state.update(result_state)
                 await self._safe_save_context(state)
                 return state
@@ -395,14 +431,14 @@ class AIWorkflow:
             return state
 
         if self._should_clarify(state):
-            result_state = await self.clarify_node.execute(state)
+            result_state = await self._get_clarify_node().execute(state)
             state.update(result_state)
             return state
 
         if state.get("intent") == INTENT_RECOMMEND:
             logger.info("Recommendation intent routed directly to topic advisor")
             try:
-                result_state = await self.topic_advisor_node.execute(state)
+                result_state = await self._get_topic_advisor_node().execute(state)
                 state.update(result_state)
             except Exception as exc:
                 logger.error("Topic advisor failed: %s", exc, exc_info=True)
@@ -419,7 +455,7 @@ class AIWorkflow:
         )
 
         route = self.router.route_after_function_calling(state)
-        node = self.handlers.get(route, default=self.qa_node)
+        node = self.handlers.get(route, default=self._get_qa_node())
 
         try:
             result_state = await node.execute(state)
@@ -438,7 +474,7 @@ class AIWorkflow:
         if purchase_flow:
             logger.info("Streaming purchase flow step=%s", purchase_flow.get("step"))
             try:
-                result_state = await self.purchase_flow_node.execute(state)
+                result_state = await self._get_purchase_flow_node().execute(state)
                 state.update(result_state)
                 await self._safe_save_context(state)
                 yield {"type": "content", "delta": state.get("response", "")}
@@ -454,7 +490,7 @@ class AIWorkflow:
         if aftersales_flow:
             logger.info("Streaming aftersales flow step=%s", aftersales_flow.get("step"))
             try:
-                result_state = await self.aftersales_flow_node.execute(state)
+                result_state = await self._get_aftersales_flow_node().execute(state)
                 state.update(result_state)
                 await self._safe_save_context(state)
                 yield {"type": "content", "delta": state.get("response", "")}
@@ -476,7 +512,7 @@ class AIWorkflow:
             return
 
         if self._should_clarify(state):
-            result_state = await self.clarify_node.execute(state)
+            result_state = await self._get_clarify_node().execute(state)
             state.update(result_state)
             if state.get("response"):
                 yield {"type": "content", "delta": state["response"]}
@@ -486,7 +522,7 @@ class AIWorkflow:
         if state.get("intent") == INTENT_RECOMMEND:
             logger.info("Streaming recommendation via topic advisor")
             try:
-                async for token in self.topic_advisor_node.execute_stream(state):
+                async for token in self._get_topic_advisor_node().execute_stream(state):
                     yield {"type": "content", "delta": token}
             except Exception as exc:
                 logger.error("Topic advisor streaming failed: %s", exc, exc_info=True)
@@ -516,7 +552,7 @@ class AIWorkflow:
                 state["response"] = "抱歉，处理您的请求时出现了问题，请稍后再试。"
                 yield {"type": "content", "delta": state["response"]}
         else:
-            node = self.handlers.get(route, default=self.qa_node)
+            node = self.handlers.get(route, default=self._get_qa_node())
             try:
                 result_state = await node.execute(state)
                 state.update(result_state)
@@ -547,13 +583,26 @@ class AIWorkflow:
     ):
         start_time = datetime.now()
 
-        state = await self.prepare_intent(user_id, session_id, message, attachments)
-        if purchase_flow:
-            state["purchase_flow"] = purchase_flow
-        if aftersales_flow:
-            state["aftersales_flow"] = aftersales_flow
+        if purchase_flow or aftersales_flow:
+            state = await self._load_context_only(
+                user_id=user_id,
+                session_id=session_id,
+                message=message,
+                attachments=attachments,
+                purchase_flow=purchase_flow,
+                aftersales_flow=aftersales_flow,
+            )
+            intent = (
+                state.get("intent")
+                or (state.get("active_task") or {}).get("intent")
+                or state.get("last_intent")
+                or INTENT_QA
+            )
+        else:
+            state = await self.prepare_intent(user_id, session_id, message, attachments)
+            intent = state.get("intent", INTENT_QA)
 
-        yield {"type": "intent", "intent": state.get("intent", INTENT_QA)}
+        yield {"type": "intent", "intent": intent}
 
         async for event in self.generate_response_stream(state):
             if event.get("type") == "end":

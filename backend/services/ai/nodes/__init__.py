@@ -1,48 +1,44 @@
-"""
-节点模块
-"""
-from .base import BaseNode
-from .context_node import ContextNode
-from .message_entry_node import MessageEntryNode
-from .response_planner_node import ResponsePlannerNode
-from .conversation_control_node import ConversationControlNode
-from .turn_understanding_node import TurnUnderstandingNode
-from .policy_node import PolicyNode
-from .dialogue_state_node import DialogueStateNode
-from .intent_node import IntentRecognitionNode
-from .function_calling_node import FunctionCallingNode
-from .save_context_node import SaveContextNode
-from .qa_node import QANode
-from .document_node import DocumentNode
-from .ticket_node import TicketNode
-from .clarify_node import ClarifyNode
-from .product_inquiry_node import ProductInquiryNode
-from .order_query_node import OrderQueryNode
-from .purchase_guide_node import PurchaseGuideNode
-from .purchase_flow_node import PurchaseFlowNode
-from .aftersales_flow_node import AftersalesFlowNode
-from .topic_advisor_node import TopicAdvisorNode
+"""Lazy exports for AI workflow nodes.
 
-__all__ = [
-    "BaseNode",
-    "ContextNode",
-    "MessageEntryNode",
-    "ResponsePlannerNode",
-    "ConversationControlNode",
-    "TurnUnderstandingNode",
-    "PolicyNode",
-    "DialogueStateNode",
-    "IntentRecognitionNode",
-    "FunctionCallingNode",
-    "SaveContextNode",
-    "QANode",
-    "DocumentNode",
-    "TicketNode",
-    "ClarifyNode",
-    "ProductInquiryNode",
-    "OrderQueryNode",
-    "PurchaseGuideNode",
-    "PurchaseFlowNode",
-    "AftersalesFlowNode",
-    "TopicAdvisorNode",
-]
+Importing ``services.ai.nodes`` should not eagerly import every node and all of
+their external dependencies.
+"""
+from __future__ import annotations
+
+from importlib import import_module
+
+_EXPORTS = {
+    "BaseNode": (".base", "BaseNode"),
+    "ContextNode": (".context_node", "ContextNode"),
+    "MessageEntryNode": (".message_entry_node", "MessageEntryNode"),
+    "ResponsePlannerNode": (".response_planner_node", "ResponsePlannerNode"),
+    "ConversationControlNode": (".conversation_control_node", "ConversationControlNode"),
+    "TurnUnderstandingNode": (".turn_understanding_node", "TurnUnderstandingNode"),
+    "PolicyNode": (".policy_node", "PolicyNode"),
+    "DialogueStateNode": (".dialogue_state_node", "DialogueStateNode"),
+    "IntentRecognitionNode": (".intent_node", "IntentRecognitionNode"),
+    "FunctionCallingNode": (".function_calling_node", "FunctionCallingNode"),
+    "SaveContextNode": (".save_context_node", "SaveContextNode"),
+    "QANode": (".qa_node", "QANode"),
+    "DocumentNode": (".document_node", "DocumentNode"),
+    "TicketNode": (".ticket_node", "TicketNode"),
+    "ClarifyNode": (".clarify_node", "ClarifyNode"),
+    "ProductInquiryNode": (".product_inquiry_node", "ProductInquiryNode"),
+    "OrderQueryNode": (".order_query_node", "OrderQueryNode"),
+    "PurchaseGuideNode": (".purchase_guide_node", "PurchaseGuideNode"),
+    "PurchaseFlowNode": (".purchase_flow_node", "PurchaseFlowNode"),
+    "AftersalesFlowNode": (".aftersales_flow_node", "AftersalesFlowNode"),
+    "TopicAdvisorNode": (".topic_advisor_node", "TopicAdvisorNode"),
+}
+
+
+def __getattr__(name: str):
+    module_name, attr_name = _EXPORTS.get(name, (None, None))
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module = import_module(module_name, __name__)
+    return getattr(module, attr_name)
+
+
+__all__ = list(_EXPORTS)

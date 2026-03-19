@@ -14,15 +14,23 @@ from typing import Optional
 from langchain_core.prompts import ChatPromptTemplate
 
 from config import settings
-from services.file_service import FileService
 from services.knowledge_retriever import knowledge_retriever
 
 from .base import BaseNode
 from ..memory_builder import MemoryContextBuilder
 from ..state import ConversationState
 
-file_service = FileService()
 memory_builder = MemoryContextBuilder()
+_file_service = None
+
+
+def _get_file_service():
+    global _file_service
+    if _file_service is None:
+        from services.file_service import FileService
+
+        _file_service = FileService()
+    return _file_service
 
 _GREETING_RE = re.compile(
     r"^(你好|您好|hello|hi|哈喽|在吗|你是谁|你叫什么|早上好|晚上好)[!！。\s]*$",
@@ -156,6 +164,7 @@ class QANode(BaseNode):
             return SIMPLE_PROMPT.format_messages(question=user_message)
 
         attachment_texts = []
+        file_service = _get_file_service()
         for attachment in state.get("attachments") or []:
             file_path = attachment.get("file_path", "")
             if not file_path:

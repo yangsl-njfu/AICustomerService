@@ -1,22 +1,33 @@
 """
 文档分析节点
 """
-import logging
 import asyncio
-from .base import BaseNode
-from ..state import ConversationState
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate
-from services.file_service import FileService
 from services.paddleocr_service import vision_llm_service
 
+from .base import BaseNode
+from ..state import ConversationState
+
 logger = logging.getLogger(__name__)
-file_service = FileService()
+_file_service = None
 
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
 
+def _get_file_service():
+    global _file_service
+    if _file_service is None:
+        from services.file_service import FileService
+
+        _file_service = FileService()
+    return _file_service
+
+
 async def _get_attachment_text(att: dict) -> tuple[str, str, dict]:
     """获取附件文本内容，返回“正文、展示名、附加信息”。"""
+    file_service = _get_file_service()
     file_path = att.get("file_path", "")
     file_name = att.get("file_name", "未知文件")
     file_id = att.get("file_id", "")

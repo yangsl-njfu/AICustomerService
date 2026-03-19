@@ -52,8 +52,9 @@ _base_mod = types.ModuleType("backend.services.ai.nodes.base")
 
 
 class _FakeBaseNode:
-    def __init__(self, llm=None):
+    def __init__(self, llm=None, runtime=None):
         self.llm = llm
+        self.runtime = runtime
 
 
 _base_mod.BaseNode = _FakeBaseNode
@@ -72,6 +73,15 @@ else:
     _state_mod.ConversationState = dict
     sys.modules["backend.services.ai.state"] = _state_mod
 
+_memory_builder_path = os.path.join(_backend_dir, "services", "ai", "memory_builder.py")
+_memory_builder_spec = importlib.util.spec_from_file_location(
+    "backend.services.ai.memory_builder",
+    _memory_builder_path,
+)
+_memory_builder_mod = importlib.util.module_from_spec(_memory_builder_spec)
+sys.modules["backend.services.ai.memory_builder"] = _memory_builder_mod
+_memory_builder_spec.loader.exec_module(_memory_builder_mod)
+
 # Now load qa_node
 _qa_path = os.path.join(_backend_dir, "services", "ai", "nodes", "qa_node.py")
 _qa_spec = importlib.util.spec_from_file_location("backend.services.ai.nodes.qa_node", _qa_path)
@@ -81,7 +91,6 @@ sys.modules["backend.services.ai.nodes.qa_node"] = _qa_mod
 _qa_spec.loader.exec_module(_qa_mod)
 
 QANode = _qa_mod.QANode
-RAG_PROMPT = _qa_mod.RAG_PROMPT
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

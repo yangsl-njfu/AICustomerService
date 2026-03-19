@@ -1,28 +1,4 @@
-import importlib.util
-import os
-import sys
-import types
-
-
-_backend_dir = os.path.join(os.path.dirname(__file__), "..")
-
-for pkg in [
-    "backend",
-    "backend.services",
-    "backend.services.ai",
-]:
-    if pkg not in sys.modules:
-        sys.modules[pkg] = types.ModuleType(pkg)
-
-_module_path = os.path.join(_backend_dir, "services", "ai", "memory_builder.py")
-_module_name = "backend.services.ai.memory_builder"
-_spec = importlib.util.spec_from_file_location(_module_name, _module_path)
-_mod = importlib.util.module_from_spec(_spec)
-_mod.__package__ = "backend.services.ai"
-sys.modules[_module_name] = _mod
-_spec.loader.exec_module(_mod)
-
-MemoryContextBuilder = _mod.MemoryContextBuilder
+from services.ai.memory_builder import MemoryContextBuilder
 
 
 def test_recent_history_uses_short_term_window():

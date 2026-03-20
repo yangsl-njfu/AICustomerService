@@ -1,4 +1,4 @@
-import importlib.util
+﻿import importlib.util
 import os
 import sys
 import types
@@ -10,29 +10,29 @@ _backend_dir = os.path.join(os.path.dirname(__file__), "..")
 for pkg in [
     "backend",
     "backend.services",
-    "backend.services.ai",
-    "backend.services.ai.nodes",
+    "backend.ai_module.core",
+    "backend.ai_module.core.nodes",
 ]:
     if pkg not in sys.modules:
         sys.modules[pkg] = types.ModuleType(pkg)
 
-_state_path = os.path.join(_backend_dir, "services", "ai", "state.py")
-_state_spec = importlib.util.spec_from_file_location("backend.services.ai.state", _state_path)
+_state_path = os.path.join(_backend_dir, "ai_module", "core", "state.py")
+_state_spec = importlib.util.spec_from_file_location("backend.ai_module.core.state", _state_path)
 _state_mod = importlib.util.module_from_spec(_state_spec)
-sys.modules["backend.services.ai.state"] = _state_mod
+sys.modules["backend.ai_module.core.state"] = _state_mod
 _state_spec.loader.exec_module(_state_mod)
 
-_base_path = os.path.join(_backend_dir, "services", "ai", "nodes", "base.py")
-_base_spec = importlib.util.spec_from_file_location("backend.services.ai.nodes.base", _base_path)
+_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "base.py")
+_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.base", _base_path)
 _base_mod = importlib.util.module_from_spec(_base_spec)
-sys.modules["backend.services.ai.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
-_constants_path = os.path.join(_backend_dir, "services", "ai", "constants.py")
-_constants_spec = importlib.util.spec_from_file_location("backend.services.ai.constants", _constants_path)
+_constants_path = os.path.join(_backend_dir, "ai_module", "core", "constants.py")
+_constants_spec = importlib.util.spec_from_file_location("backend.ai_module.core.constants", _constants_path)
 _constants_mod = importlib.util.module_from_spec(_constants_spec)
-_constants_mod.__package__ = "backend.services.ai"
-sys.modules["backend.services.ai.constants"] = _constants_mod
+_constants_mod.__package__ = "backend.ai_module.core"
+sys.modules["backend.ai_module.core.constants"] = _constants_mod
 _constants_spec.loader.exec_module(_constants_mod)
 
 _services_pkg = types.ModuleType("services")
@@ -41,15 +41,15 @@ _function_tools_mod.topic_advisor_tools = []
 sys.modules["services"] = _services_pkg
 sys.modules["services.function_tools"] = _function_tools_mod
 
-_node_path = os.path.join(_backend_dir, "services", "ai", "nodes", "topic_advisor_node.py")
+_node_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "topic_advisor_node.py")
 _node_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.nodes.topic_advisor_node",
+    "backend.ai_module.core.nodes.topic_advisor_node",
     _node_path,
     submodule_search_locations=[],
 )
 _node_mod = importlib.util.module_from_spec(_node_spec)
-_node_mod.__package__ = "backend.services.ai.nodes"
-sys.modules["backend.services.ai.nodes.topic_advisor_node"] = _node_mod
+_node_mod.__package__ = "backend.ai_module.core.nodes"
+sys.modules["backend.ai_module.core.nodes.topic_advisor_node"] = _node_mod
 _node_spec.loader.exec_module(_node_mod)
 
 TopicAdvisorNode = _node_mod.TopicAdvisorNode
@@ -119,3 +119,4 @@ class TestTopicAdvisorNode:
 
         assert "技术栈" in result["response"]
         assert result["topic_advisor_tool_results"] == []
+

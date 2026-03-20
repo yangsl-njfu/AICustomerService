@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for intent_node.py — verifying intent history prompt formatting,
 fallback logic, and intent history append behavior.
 """
@@ -18,24 +18,24 @@ _backend_dir = os.path.join(os.path.dirname(__file__), "..")
 for pkg in [
     "backend",
     "backend.services",
-    "backend.services.ai",
-    "backend.services.ai.nodes",
+    "backend.ai_module.core",
+    "backend.ai_module.core.nodes",
 ]:
     if pkg not in sys.modules:
         sys.modules[pkg] = types.ModuleType(pkg)
 
 # Load state.py
-_state_path = os.path.join(_backend_dir, "services", "ai", "state.py")
-_state_spec = importlib.util.spec_from_file_location("backend.services.ai.state", _state_path)
+_state_path = os.path.join(_backend_dir, "ai_module", "core", "state.py")
+_state_spec = importlib.util.spec_from_file_location("backend.ai_module.core.state", _state_path)
 _state_mod = importlib.util.module_from_spec(_state_spec)
-sys.modules["backend.services.ai.state"] = _state_mod
+sys.modules["backend.ai_module.core.state"] = _state_mod
 _state_spec.loader.exec_module(_state_mod)
 
 # Load base.py
-_base_path = os.path.join(_backend_dir, "services", "ai", "nodes", "base.py")
-_base_spec = importlib.util.spec_from_file_location("backend.services.ai.nodes.base", _base_path)
+_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "base.py")
+_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.base", _base_path)
 _base_mod = importlib.util.module_from_spec(_base_spec)
-sys.modules["backend.services.ai.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
 # Load config.py
@@ -47,22 +47,22 @@ sys.modules["config"] = _config_mod
 _config_spec.loader.exec_module(_config_mod)
 
 # Load constants.py
-_constants_path = os.path.join(_backend_dir, "services", "ai", "constants.py")
-_constants_spec = importlib.util.spec_from_file_location("backend.services.ai.constants", _constants_path)
+_constants_path = os.path.join(_backend_dir, "ai_module", "core", "constants.py")
+_constants_spec = importlib.util.spec_from_file_location("backend.ai_module.core.constants", _constants_path)
 _constants_mod = importlib.util.module_from_spec(_constants_spec)
-_constants_mod.__package__ = "backend.services.ai"
-sys.modules["backend.services.ai.constants"] = _constants_mod
+_constants_mod.__package__ = "backend.ai_module.core"
+sys.modules["backend.ai_module.core.constants"] = _constants_mod
 _constants_spec.loader.exec_module(_constants_mod)
 
 # Load intent_node.py
-_intent_path = os.path.join(_backend_dir, "services", "ai", "nodes", "intent_node.py")
+_intent_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "intent_node.py")
 _intent_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.nodes.intent_node", _intent_path,
+    "backend.ai_module.core.nodes.intent_node", _intent_path,
     submodule_search_locations=[],
 )
 _intent_mod = importlib.util.module_from_spec(_intent_spec)
-_intent_mod.__package__ = "backend.services.ai.nodes"
-sys.modules["backend.services.ai.nodes.intent_node"] = _intent_mod
+_intent_mod.__package__ = "backend.ai_module.core.nodes"
+sys.modules["backend.ai_module.core.nodes.intent_node"] = _intent_mod
 _intent_spec.loader.exec_module(_intent_mod)
 
 _format_intent_history = _intent_mod._format_intent_history
@@ -382,3 +382,4 @@ class TestIntentRecognitionNodeExecute:
         assert result["confidence"] == 0.5
         assert len(result["intent_history"]) == 1
         assert result["intent_history"][0]["intent"] == "问答"
+

@@ -22,9 +22,9 @@ from typing import Any, Dict, Optional
 
 from config import init_chat_model, init_intent_model
 
-from .constants import CONTROL_RESPONSE_MODES, INTENT_QA, INTENT_RECOMMEND
+from ..constants import CONTROL_RESPONSE_MODES, INTENT_QA, INTENT_RECOMMEND
 from .handler_registry import HandlerRegistry
-from .nodes import (
+from ..nodes import (
     ContextNode,
     ConversationControlNode,
     DialogueStateNode,
@@ -35,8 +35,8 @@ from .nodes import (
     SaveContextNode,
 )
 from .router import Router
-from .runtime import runtime_factory
-from .state import ConversationState
+from ..runtime import runtime_factory
+from ..state import ConversationState
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class AIWorkflow:
     def _get_qa_node(self):
         return self._instantiate_node(
             "qa_flow",
-            "services.ai.nodes.qa_node",
+            "ai_module.core.nodes.qa_node",
             "QANode",
             self.llm,
             runtime=self.runtime,
@@ -100,7 +100,7 @@ class AIWorkflow:
     def _get_document_node(self):
         return self._instantiate_node(
             "document_analysis",
-            "services.ai.nodes.document_node",
+            "ai_module.core.nodes.document_node",
             "DocumentNode",
             self.llm,
         )
@@ -108,7 +108,7 @@ class AIWorkflow:
     def _get_ticket_node(self):
         return self._instantiate_node(
             "ticket_flow",
-            "services.ai.nodes.ticket_node",
+            "ai_module.core.nodes.ticket_node",
             "TicketNode",
             self.llm,
         )
@@ -116,7 +116,7 @@ class AIWorkflow:
     def _get_clarify_node(self):
         return self._instantiate_node(
             "clarify",
-            "services.ai.nodes.clarify_node",
+            "ai_module.core.nodes.clarify_node",
             "ClarifyNode",
             self.llm,
         )
@@ -124,7 +124,7 @@ class AIWorkflow:
     def _get_product_inquiry_node(self):
         return self._instantiate_node(
             "product_inquiry",
-            "services.ai.nodes.product_inquiry_node",
+            "ai_module.core.nodes.product_inquiry_node",
             "ProductInquiryNode",
             self.llm,
         )
@@ -132,7 +132,7 @@ class AIWorkflow:
     def _get_order_query_node(self):
         return self._instantiate_node(
             "order_query",
-            "services.ai.nodes.order_query_node",
+            "ai_module.core.nodes.order_query_node",
             "OrderQueryNode",
             self.llm,
         )
@@ -140,7 +140,7 @@ class AIWorkflow:
     def _get_purchase_guide_node(self):
         return self._instantiate_node(
             "purchase_guide",
-            "services.ai.nodes.purchase_guide_node",
+            "ai_module.core.nodes.purchase_guide_node",
             "PurchaseGuideNode",
             self.llm,
         )
@@ -148,21 +148,21 @@ class AIWorkflow:
     def _get_purchase_flow_node(self):
         return self._instantiate_node(
             "purchase_flow",
-            "services.ai.nodes.purchase_flow_node",
+            "ai_module.core.nodes.purchase_flow_node",
             "PurchaseFlowNode",
         )
 
     def _get_aftersales_flow_node(self):
         return self._instantiate_node(
             "aftersales_flow",
-            "services.ai.nodes.aftersales_flow_node",
+            "ai_module.core.nodes.aftersales_flow_node",
             "AftersalesFlowNode",
         )
 
     def _get_topic_advisor_node(self):
         return self._instantiate_node(
             "topic_advisor",
-            "services.ai.nodes.topic_advisor_node",
+            "ai_module.core.nodes.topic_advisor_node",
             "TopicAdvisorNode",
             self.llm,
             runtime=self.runtime,

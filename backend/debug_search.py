@@ -1,10 +1,10 @@
-import asyncio
+﻿import asyncio
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 async def test():
-    from services.ai.workflow import AIWorkflow
+    from ai_module.core.workflow import AIWorkflow
     from services.redis_cache import redis_cache
 
     await redis_cache.connect()
@@ -25,3 +25,4 @@ async def test():
     await redis_cache.disconnect()
 
 asyncio.run(test())
+

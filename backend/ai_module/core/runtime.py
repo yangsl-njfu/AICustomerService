@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from adapters import EcommerceAdapter
 from config import config_loader, init_chat_model, init_intent_model, settings
-from plugins import PluginManager, register_builtin_tool_plugins
+from ai_module.plugins import PluginManager, register_builtin_tool_plugins
 
 from .constants import DEFAULT_INTENT_HANDLER_MAP, DEFAULT_INTENT_LABELS, DEFAULT_INTENT_RULES
 

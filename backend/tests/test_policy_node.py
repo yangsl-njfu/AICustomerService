@@ -1,5 +1,5 @@
-import pytest
-from services.ai.nodes.policy_node import PolicyNode
+﻿import pytest
+from ai_module.core.nodes.policy_node import PolicyNode
 
 
 def _make_state(**overrides):
@@ -87,3 +87,4 @@ class TestPolicyNode:
 
         assert result["intent"] is None
         assert result["confidence"] == 0.25
+

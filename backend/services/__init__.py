@@ -1,7 +1,7 @@
-"""Lazy service package exports.
+﻿"""Lazy service package exports.
 
 Avoid importing unrelated service dependencies when only a subpackage such as
-`services.ai` is needed.
+`ai_module.core` is needed.
 """
 from __future__ import annotations
 
@@ -26,3 +26,4 @@ def __getattr__(name: str):
 
 
 __all__ = list(_EXPORTS)
+

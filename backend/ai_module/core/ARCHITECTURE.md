@@ -1,8 +1,8 @@
-# AI Structure
+﻿# AI Structure
 
 ## Main Runtime Chain
 
-The backend AI pipeline is centered on `AIWorkflow` in [workflow.py](/e:/Project/AICustomerService/backend/services/ai/workflow.py).
+The backend AI pipeline is centered on `AIWorkflow` in [workflow/orchestrator.py](/e:/Project/AICustomerService/backend/ai_module/core/workflow/orchestrator.py).
 
 Current non-stream flow:
 
@@ -23,18 +23,18 @@ requests share the same preparation pipeline.
 
 ### Core
 
-- `workflow.py`: workflow assembly and entrypoints
+- `workflow/orchestrator.py`: workflow assembly and entrypoints
 - `runtime.py`: business pack, prompts, model/tool provisioning
 - `state.py`: shared conversation contract
-- `skill_router.py`: skill routing after execution planning
-- `handler_registry.py`: node registration
+- `workflow/skill_router.py`: skill routing after execution planning
+- `workflow/handler_registry.py`: node registration
 
 Core package exports are lazy:
 
-- `services.ai.__init__` no longer imports `runtime` and `workflow` eagerly
-- `services.ai.nodes.__init__` no longer imports every node eagerly
+- `ai_module.core.__init__` no longer imports `runtime` and `workflow` eagerly
+- `ai_module.core.nodes.__init__` no longer imports every node eagerly
 
-This keeps targeted imports like `services.ai.nodes.message_entry_node` from
+This keeps targeted imports like `ai_module.core.nodes.message_entry_node` from
 pulling in optional dependencies such as file or database stacks.
 
 ### Understanding
@@ -76,9 +76,10 @@ pulling in optional dependencies such as file or database stacks.
   - `nodes/personalized_recommend_node.py`
   - `nodes/product_recommendation_node.py`
 - Skill nodes are now registered lazily through `HandlerRegistry`. Importing
-  `services.ai.workflow` no longer instantiates order/document/aftersales
+  `ai_module.core.workflow` no longer instantiates order/document/aftersales
   handlers up front.
 - `qa_node.py` and `document_node.py` now lazy-load `FileService` so optional
   file-storage dependencies are not required at module import time.
 - The next cleanup target is test infrastructure: a few node tests still use
   manual `importlib` bootstrapping instead of normal package imports.
+

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for ConversationSummarizer
 
 Tests cover:
@@ -22,7 +22,7 @@ _backend_dir = os.path.join(os.path.dirname(__file__), "..")
 for pkg in [
     "backend",
     "backend.services",
-    "backend.services.ai",
+    "backend.ai_module.core",
 ]:
     if pkg not in sys.modules:
         sys.modules[pkg] = types.ModuleType(pkg)
@@ -35,13 +35,13 @@ sys.modules["backend.config"] = _config_mod
 _config_spec.loader.exec_module(_config_mod)
 
 # Load summarizer.py
-_summarizer_path = os.path.join(_backend_dir, "services", "ai", "summarizer.py")
+_summarizer_path = os.path.join(_backend_dir, "ai_module", "core", "summarizer.py")
 _summarizer_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.summarizer", _summarizer_path,
+    "backend.ai_module.core.summarizer", _summarizer_path,
 )
 _summarizer_mod = importlib.util.module_from_spec(_summarizer_spec)
-_summarizer_mod.__package__ = "backend.services.ai"
-sys.modules["backend.services.ai.summarizer"] = _summarizer_mod
+_summarizer_mod.__package__ = "backend.ai_module.core"
+sys.modules["backend.ai_module.core.summarizer"] = _summarizer_mod
 _summarizer_spec.loader.exec_module(_summarizer_mod)
 
 ConversationSummarizer = _summarizer_mod.ConversationSummarizer
@@ -277,3 +277,4 @@ class TestFallbackTruncate:
         assert result["summary"] == ""
         assert len(result["remaining_history"]) == 10
         assert result["remaining_history"] == history
+

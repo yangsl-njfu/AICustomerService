@@ -1,6 +1,6 @@
-import pytest
+﻿import pytest
 
-from services.ai.nodes.message_entry_node import MessageEntryNode
+from ai_module.core.nodes.message_entry_node import MessageEntryNode
 
 
 def _make_state(message: str, **overrides):
@@ -214,3 +214,4 @@ class TestMessageEntryNode:
         assert result["intent"] is None
         assert result["flow_relation"] == "interrupt"
         assert result["continue_previous_task"] is False
+

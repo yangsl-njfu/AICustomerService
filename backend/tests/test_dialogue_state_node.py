@@ -1,5 +1,5 @@
-import pytest
-from services.ai.nodes.dialogue_state_node import DialogueStateNode
+﻿import pytest
+from ai_module.core.nodes.dialogue_state_node import DialogueStateNode
 
 
 def _make_state(**overrides):
@@ -107,3 +107,4 @@ class TestDialogueStateNode:
 
         assert result["active_task"]["slots"]["selected_product_id"] == 42
         assert result["active_task"]["slots"]["selected_product_title"] == "Java 图书管理系统"
+

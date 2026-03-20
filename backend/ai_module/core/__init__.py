@@ -1,7 +1,7 @@
-"""Lazy exports for the AI service package.
+﻿"""Lazy exports for the AI service package.
 
 Avoid importing the whole workflow/runtime stack when a caller only needs a
-single submodule such as ``services.ai.nodes.message_entry_node``.
+single submodule such as ``ai_module.core.nodes.message_entry_node``.
 """
 from __future__ import annotations
 
@@ -24,3 +24,4 @@ def __getattr__(name: str):
 
 
 __all__ = list(_EXPORTS)
+

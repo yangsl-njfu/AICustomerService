@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from .skill_router import SkillRouter
-from .state import ConversationState
+from ..state import ConversationState
 
 
 class Router(SkillRouter):

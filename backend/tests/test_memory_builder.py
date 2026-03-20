@@ -1,4 +1,4 @@
-from services.ai.memory_builder import MemoryContextBuilder
+﻿from ai_module.core.memory_builder import MemoryContextBuilder
 
 
 def test_recent_history_uses_short_term_window():
@@ -42,3 +42,4 @@ def test_short_term_memory_includes_task_snapshot():
     assert "当前主任务：推荐" in result
     assert "当前停留步骤：select_recommended_item" in result
     assert "language=Python" in result
+

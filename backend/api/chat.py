@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
+from ai_module.engine import ai_engine
 from database import get_db
 from schemas import ConversationResponse, MessageCreate, MessageResponse, SessionCreate, SessionResponse
-from services.ai.runtime import runtime_factory
 from services.attachment_service import AttachmentService
 from services.auth_service import AuthService
 from services.message_service import MessageService
@@ -31,7 +31,7 @@ attachment_service = AttachmentService()
 
 
 def _get_default_workflow():
-    return runtime_factory.get_workflow()
+    return ai_engine.get_workflow()
 
 
 async def get_current_user_id(

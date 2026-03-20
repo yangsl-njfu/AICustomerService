@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for FunctionCallingNode (refactored to use llm.bind_tools)
 """
 import sys
@@ -18,32 +18,32 @@ _backend_dir = os.path.join(os.path.dirname(__file__), "..")
 for pkg in [
     "backend",
     "backend.services",
-    "backend.services.ai",
-    "backend.services.ai.nodes",
+    "backend.ai_module.core",
+    "backend.ai_module.core.nodes",
 ]:
     if pkg not in sys.modules:
         sys.modules[pkg] = types.ModuleType(pkg)
 
 # Load state.py
-_state_path = os.path.join(_backend_dir, "services", "ai", "state.py")
-_state_spec = importlib.util.spec_from_file_location("backend.services.ai.state", _state_path)
+_state_path = os.path.join(_backend_dir, "ai_module", "core", "state.py")
+_state_spec = importlib.util.spec_from_file_location("backend.ai_module.core.state", _state_path)
 _state_mod = importlib.util.module_from_spec(_state_spec)
-sys.modules["backend.services.ai.state"] = _state_mod
+sys.modules["backend.ai_module.core.state"] = _state_mod
 _state_spec.loader.exec_module(_state_mod)
 
 # Load base.py
-_base_path = os.path.join(_backend_dir, "services", "ai", "nodes", "base.py")
-_base_spec = importlib.util.spec_from_file_location("backend.services.ai.nodes.base", _base_path)
+_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "base.py")
+_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.base", _base_path)
 _base_mod = importlib.util.module_from_spec(_base_spec)
-sys.modules["backend.services.ai.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
 # Load constants.py
-_constants_path = os.path.join(_backend_dir, "services", "ai", "constants.py")
-_constants_spec = importlib.util.spec_from_file_location("backend.services.ai.constants", _constants_path)
+_constants_path = os.path.join(_backend_dir, "ai_module", "core", "constants.py")
+_constants_spec = importlib.util.spec_from_file_location("backend.ai_module.core.constants", _constants_path)
 _constants_mod = importlib.util.module_from_spec(_constants_spec)
-_constants_mod.__package__ = "backend.services.ai"
-sys.modules["backend.services.ai.constants"] = _constants_mod
+_constants_mod.__package__ = "backend.ai_module.core"
+sys.modules["backend.ai_module.core.constants"] = _constants_mod
 _constants_spec.loader.exec_module(_constants_mod)
 
 # Create mock tools that mimic LangChain @tool decorated functions
@@ -69,14 +69,14 @@ sys.modules["services.function_tools"] = _ft_mod
 sys.modules["services"] = types.ModuleType("services")
 
 # Load function_calling_node.py
-_fc_path = os.path.join(_backend_dir, "services", "ai", "nodes", "function_calling_node.py")
+_fc_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "function_calling_node.py")
 _fc_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.nodes.function_calling_node", _fc_path,
+    "backend.ai_module.core.nodes.function_calling_node", _fc_path,
     submodule_search_locations=[],
 )
 _fc_mod = importlib.util.module_from_spec(_fc_spec)
-_fc_mod.__package__ = "backend.services.ai.nodes"
-sys.modules["backend.services.ai.nodes.function_calling_node"] = _fc_mod
+_fc_mod.__package__ = "backend.ai_module.core.nodes"
+sys.modules["backend.ai_module.core.nodes.function_calling_node"] = _fc_mod
 _fc_spec.loader.exec_module(_fc_mod)
 
 FunctionCallingNode = _fc_mod.FunctionCallingNode
@@ -414,3 +414,4 @@ class TestBuildMessages:
         # system(1) + 3 history turns × 2 msgs(6) + current human(1) = 8
         # Only last 3 turns from history
         assert len(messages) == 8
+

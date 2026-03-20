@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for redis_cache.py — verifying intent_history and conversation_summary
 support in get_context and update_context methods.
 """
@@ -199,3 +199,4 @@ async def test_update_context_all_fields_together(cache: MemoryCache):
     assert ctx["intent_history"] == intent_history
     assert ctx["conversation_summary"] == summary
     assert ctx["updated_at"] is not None
+

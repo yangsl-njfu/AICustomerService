@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import sys
 import types
@@ -119,3 +119,4 @@ async def test_delete_document_removes_all_chunk_ids(service, monkeypatch):
     fake_retriever.delete_documents.assert_awaited_once_with(["doc_0", "doc_1"], "knowledge_base")
     assert not doc_file.exists()
     assert "doc" not in service.metadata
+

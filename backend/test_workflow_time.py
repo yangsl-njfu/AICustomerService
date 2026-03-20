@@ -1,4 +1,4 @@
-"""测试工作流各阶段耗时 + Function Calling 参数检查"""
+﻿"""测试工作流各阶段耗时 + Function Calling 参数检查"""
 import asyncio
 import time
 import sys
@@ -71,7 +71,7 @@ async def test_single(workflow, user_id, session_id, message, desc):
 
 
 async def main():
-    from services.ai.workflow import AIWorkflow
+    from ai_module.core.workflow import AIWorkflow
     from services.redis_cache import redis_cache
 
     try:
@@ -106,3 +106,4 @@ async def main():
 
 
 asyncio.run(main())
+

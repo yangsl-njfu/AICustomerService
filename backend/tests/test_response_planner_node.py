@@ -1,8 +1,8 @@
-import types
+﻿import types
 
 import pytest
-from services.ai.nodes.conversation_control_node import ConversationControlNode
-from services.ai.nodes.response_planner_node import ResponsePlannerNode
+from ai_module.core.nodes.conversation_control_node import ConversationControlNode
+from ai_module.core.nodes.response_planner_node import ResponsePlannerNode
 
 
 def _make_state(**overrides):
@@ -150,3 +150,4 @@ class TestResponsePlannerNode:
         assert "短期记忆：" in prompt_text
         assert "我要去新疆旅行" in prompt_text
         assert "当前主任务：推荐" in prompt_text
+

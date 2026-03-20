@@ -1,4 +1,4 @@
-# AICustomerService
+﻿# AICustomerService
 
 一个面向电商客服场景的 AI 项目，当前正在从“单业务定制工作流”演进为“微内核 + Business Pack 插件化”架构。
 
@@ -111,21 +111,21 @@ Runtime 是装配层，不负责回答用户问题，只负责把“这次请求
 
 ### 4.1 Kernel
 
-- `backend/services/ai/workflow.py`
-- `backend/services/ai/router.py`
-- `backend/services/ai/state.py`
-- `backend/services/ai/nodes/`
+- `backend/ai_module/core/workflow/orchestrator.py`
+- `backend/ai_module/core/workflow/router.py`
+- `backend/ai_module/core/state.py`
+- `backend/ai_module/core/nodes/`
 
 ### 4.2 Runtime / Business Pack
 
-- `backend/services/ai/runtime.py`
+- `backend/ai_module/core/runtime.py`
 - `backend/config/businesses/graduation-marketplace.yaml`
 
 ### 4.3 Plugin System
 
-- `backend/plugins/base.py`
-- `backend/plugins/manager.py`
-- `backend/plugins/builtin_tools.py`
+- `backend/ai_module/plugins/base.py`
+- `backend/ai_module/plugins/manager.py`
+- `backend/ai_module/plugins/builtin_tools.py`
 
 ### 4.4 API Entry
 
@@ -147,8 +147,8 @@ Runtime 是装配层，不负责回答用户问题，只负责把“这次请求
 相关文件：
 
 - `backend/config/__init__.py`
-- `backend/services/ai/runtime.py`
-- `backend/services/ai/workflow.py`
+- `backend/ai_module/core/runtime.py`
+- `backend/ai_module/core/workflow/orchestrator.py`
 
 ### 5.2 引入 Business Pack Runtime
 
@@ -163,7 +163,7 @@ Runtime 是装配层，不负责回答用户问题，只负责把“这次请求
 
 相关文件：
 
-- `backend/services/ai/runtime.py`
+- `backend/ai_module/core/runtime.py`
 
 ### 5.3 工具插件化
 
@@ -178,8 +178,8 @@ Runtime 是装配层，不负责回答用户问题，只负责把“这次请求
 
 相关文件：
 
-- `backend/plugins/builtin_tools.py`
-- `backend/plugins/manager.py`
+- `backend/ai_module/plugins/builtin_tools.py`
+- `backend/ai_module/plugins/manager.py`
 
 ### 5.4 Workflow 改成运行时装配
 
@@ -203,7 +203,7 @@ workflow 现在会读取 runtime：
 
 相关文件：
 
-- `backend/services/ai/workflow.py`
+- `backend/ai_module/core/workflow/orchestrator.py`
 
 ### 5.5 Chat / Gateway 接入新架构
 
@@ -341,6 +341,9 @@ Client
 
 ```text
 backend/
+  ai_module/
+    engine.py
+    app.py
   api/
   adapters/
   config/
@@ -352,17 +355,29 @@ backend/
       workflow.py
 ```
 
+AI 模块已独立入口化：
+
+- 核心调用入口：`backend/ai_module/engine.py`
+- 独立服务入口：`backend/ai_module/app.py`
+- 兼容导出：`backend/ai_module/runtime.py`、`backend/ai_module/workflow.py`
+- 快速启动文件：`backend/main_ai.py`
+
 启动方式可参考：
 
 - `start.bat`
 
 如果只看 AI 主线，优先阅读这些文件：
 
-- `backend/services/ai/runtime.py`
-- `backend/services/ai/workflow.py`
-- `backend/services/ai/router.py`
-- `backend/plugins/builtin_tools.py`
+- `backend/ai_module/core/runtime.py`
+- `backend/ai_module/core/workflow/orchestrator.py`
+- `backend/ai_module/core/workflow/router.py`
+- `backend/ai_module/plugins/builtin_tools.py`
 - `backend/config/businesses/graduation-marketplace.yaml`
+
+兼容说明：
+
+- 旧的 `backend/services/ai/*` 与 `backend/plugins/*` 兼容层已移除
+- 请统一使用 `backend/ai_module/*` 路径
 
 ## 13. 安全提示
 
@@ -381,3 +396,4 @@ backend/
 - 插件注册方式
 - Intent Handler 配置方式
 - MCP 接入说明
+

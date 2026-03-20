@@ -7,8 +7,8 @@
 """
 from __future__ import annotations
 
-from .constants import DEFAULT_INTENT_HANDLER_MAP, INTENT_AFTERSALES, INTENT_RECOMMEND
-from .state import ConversationState
+from ..constants import DEFAULT_INTENT_HANDLER_MAP, INTENT_AFTERSALES, INTENT_RECOMMEND
+from ..state import ConversationState
 
 
 class SkillRouter:

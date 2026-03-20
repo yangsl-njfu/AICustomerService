@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for SaveContextNode with ConversationSummarizer integration.
 
 Tests cover:
@@ -22,8 +22,8 @@ _backend_dir = os.path.join(os.path.dirname(__file__), "..")
 for pkg in [
     "backend",
     "backend.services",
-    "backend.services.ai",
-    "backend.services.ai.nodes",
+    "backend.ai_module.core",
+    "backend.ai_module.core.nodes",
 ]:
     if pkg not in sys.modules:
         sys.modules[pkg] = types.ModuleType(pkg)
@@ -42,46 +42,46 @@ _redis_cache_stub.redis_cache = _mock_redis_cache
 sys.modules["services.redis_cache"] = _redis_cache_stub
 
 # Load base node
-_base_path = os.path.join(_backend_dir, "services", "ai", "nodes", "base.py")
+_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "base.py")
 _base_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.nodes.base", _base_path,
+    "backend.ai_module.core.nodes.base", _base_path,
 )
 _base_mod = importlib.util.module_from_spec(_base_spec)
-_base_mod.__package__ = "backend.services.ai.nodes"
+_base_mod.__package__ = "backend.ai_module.core.nodes"
 
 # We need state module for base
-_state_path = os.path.join(_backend_dir, "services", "ai", "state.py")
+_state_path = os.path.join(_backend_dir, "ai_module", "core", "state.py")
 _state_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.state", _state_path,
+    "backend.ai_module.core.state", _state_path,
 )
 _state_mod = importlib.util.module_from_spec(_state_spec)
-_state_mod.__package__ = "backend.services.ai"
-sys.modules["backend.services.ai.state"] = _state_mod
+_state_mod.__package__ = "backend.ai_module.core"
+sys.modules["backend.ai_module.core.state"] = _state_mod
 # Also register as relative import target
 sys.modules["..state"] = _state_mod
 _state_spec.loader.exec_module(_state_mod)
 
-sys.modules["backend.services.ai.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
 # Load summarizer
-_summarizer_path = os.path.join(_backend_dir, "services", "ai", "summarizer.py")
+_summarizer_path = os.path.join(_backend_dir, "ai_module", "core", "summarizer.py")
 _summarizer_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.summarizer", _summarizer_path,
+    "backend.ai_module.core.summarizer", _summarizer_path,
 )
 _summarizer_mod = importlib.util.module_from_spec(_summarizer_spec)
-_summarizer_mod.__package__ = "backend.services.ai"
-sys.modules["backend.services.ai.summarizer"] = _summarizer_mod
+_summarizer_mod.__package__ = "backend.ai_module.core"
+sys.modules["backend.ai_module.core.summarizer"] = _summarizer_mod
 _summarizer_spec.loader.exec_module(_summarizer_mod)
 
 # Load save_context_node
-_node_path = os.path.join(_backend_dir, "services", "ai", "nodes", "save_context_node.py")
+_node_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "save_context_node.py")
 _node_spec = importlib.util.spec_from_file_location(
-    "backend.services.ai.nodes.save_context_node", _node_path,
+    "backend.ai_module.core.nodes.save_context_node", _node_path,
 )
 _node_mod = importlib.util.module_from_spec(_node_spec)
-_node_mod.__package__ = "backend.services.ai.nodes"
-sys.modules["backend.services.ai.nodes.save_context_node"] = _node_mod
+_node_mod.__package__ = "backend.ai_module.core.nodes"
+sys.modules["backend.ai_module.core.nodes.save_context_node"] = _node_mod
 _node_spec.loader.exec_module(_node_mod)
 
 SaveContextNode = _node_mod.SaveContextNode
@@ -365,3 +365,4 @@ async def test_answer_then_resume_preserves_original_resume_position():
     assert state["active_task"]["resume_mode"] == "resume_exact"
     assert state["active_task"]["resume_pending_action"] == "select_recommended_item"
     assert state["active_task"]["awaiting_resume_decision"] is False
+

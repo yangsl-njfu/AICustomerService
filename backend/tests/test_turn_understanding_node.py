@@ -1,7 +1,7 @@
-from unittest.mock import AsyncMock, MagicMock
+﻿from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from services.ai.nodes.turn_understanding_node import TurnUnderstandingNode
+from ai_module.core.nodes.turn_understanding_node import TurnUnderstandingNode
 
 
 def _make_state(message: str, **overrides):
@@ -229,3 +229,4 @@ class TestTurnUnderstandingNode:
         assert result["self_contained_request"] is True
         assert result["continue_previous_task"] is False
         assert result["slot_updates"]["language"] == "Java"
+

@@ -1,6 +1,6 @@
-"""Lazy exports for AI workflow nodes.
+﻿"""Lazy exports for AI workflow nodes.
 
-Importing ``services.ai.nodes`` should not eagerly import every node and all of
+Importing ``ai_module.core.nodes`` should not eagerly import every node and all of
 their external dependencies.
 """
 from __future__ import annotations
@@ -42,3 +42,4 @@ def __getattr__(name: str):
 
 
 __all__ = list(_EXPORTS)
+

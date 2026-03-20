@@ -11,9 +11,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.loader import config_loader
+from ai_module.engine import ai_engine
 from database import get_db
-from services.ai.runtime import runtime_factory
 from services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/v1/gateway", tags=["gateway"])
@@ -67,8 +66,7 @@ async def send_message(
         )
 
     try:
-        runtime_factory.get_runtime(request.business_id)
-        workflow = runtime_factory.get_workflow(request.business_id)
+        workflow = ai_engine.get_workflow(request.business_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -99,22 +97,7 @@ async def send_message(
 
 @router.get("/businesses")
 async def list_businesses(user_id: str = Depends(get_current_user_id)):
-    businesses = []
-    for business_id in config_loader.list_businesses():
-        config = config_loader.get_config(business_id)
-        if not config:
-            continue
-
-        businesses.append(
-            {
-                "business_id": business_id,
-                "business_name": config.get("business_name", ""),
-                "business_type": config.get("business_type", ""),
-                "features": config.get("features", {}),
-            }
-        )
-
-    return {"businesses": businesses}
+    return {"businesses": ai_engine.list_businesses()}
 
 
 @router.get("/businesses/{business_id}")
@@ -123,13 +106,9 @@ async def get_business_info(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        runtime = runtime_factory.get_runtime(business_id)
+        return ai_engine.get_business_info(business_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    info = runtime.get_business_info()
-    info["plugins"] = runtime.list_plugins()
-    return info
 
 
 @router.get("/plugins")
@@ -139,11 +118,6 @@ async def list_plugins(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        runtime = runtime_factory.get_runtime(business_id)
+        return ai_engine.list_plugins(business_id=business_id, group=group)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-
-    return {
-        "business_id": runtime.business_pack.business_id,
-        "plugins": runtime.list_plugins(group=group),
-    }

@@ -406,6 +406,13 @@ export const useChatStore = defineStore('chat', () => {
     aftersalesFlowData.value = null
   }
 
+  function resetSession() {
+    currentSession.value = null
+    appendWelcomeMessage()
+    clearPurchaseFlowData()
+    clearAftersalesFlowData()
+  }
+
   return {
     sessions,
     currentSession,
@@ -421,6 +428,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     sendMessageStream,
     loadSmartQuestions,
+    resetSession,
     setPurchaseFlowData,
     getPurchaseFlowData,
     clearPurchaseFlowData,

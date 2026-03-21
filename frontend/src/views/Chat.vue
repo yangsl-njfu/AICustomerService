@@ -508,11 +508,13 @@ const quickActionIconMap: Record<string, any> = {
 }
 
 const sessionGroups = computed(() => {
-  const sortedSessions = [...chatStore.sessions].sort((a, b) => {
-    const timeA = new Date(a.created_at).getTime()
-    const timeB = new Date(b.created_at).getTime()
-    return timeB - timeA
-  })
+  const sortedSessions = [...chatStore.sessions]
+    .filter(session => session.message_count > 0)
+    .sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime()
+      const timeB = new Date(b.created_at).getTime()
+      return timeB - timeA
+    })
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const startOfYesterday = new Date(startOfToday)
@@ -684,7 +686,7 @@ watch(() => messageList.value.length, () => {
 })
 
 const createNewSession = async () => {
-  await chatStore.createSession()
+  chatStore.resetSession()
   if (isMobileLayout.value) {
     closeSidebar()
   }

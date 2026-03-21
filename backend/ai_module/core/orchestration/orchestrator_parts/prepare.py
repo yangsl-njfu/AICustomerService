@@ -63,6 +63,14 @@ class WorkflowPrepareMixin:
             state.get("current_step"),
         )
 
+        if state.get("skill_route"):
+            logger.info(
+                "prepare_intent completed in %.2fs via forced_route=%s",
+                time.time() - total_start,
+                state.get("skill_route"),
+            )
+            return state
+
         t0 = time.time()
         state = await self.response_planner_node.execute(state)
         logger.info(

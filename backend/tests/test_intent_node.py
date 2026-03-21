@@ -370,6 +370,23 @@ class TestIntentRecognitionNodeExecute:
         mock_llm.ainvoke.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_cart_query_matches_rule_before_order_history_bias(self):
+        mock_llm = self._make_mock_llm("订单查询")
+        node = IntentRecognitionNode(llm=mock_llm)
+        state = self._make_state(
+            message="购物车有东西吗",
+            intent_history=[
+                {"intent": "订单查询", "confidence": 0.95, "turn": 1, "timestamp": "t1"},
+            ],
+        )
+
+        result = await node.execute(state)
+
+        assert result["intent"] == "购物车查询"
+        assert result["confidence"] == 0.95
+        mock_llm.ainvoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_exception_fallback_appends_to_history(self):
         mock_llm = AsyncMock()
         mock_llm.ainvoke.side_effect = Exception("LLM error")

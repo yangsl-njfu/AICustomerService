@@ -117,7 +117,7 @@ class TestResponsePlannerNode:
         node = ConversationControlNode(llm=_FakeLLM("这句我先接住，刚才那个推荐我也还记着。"))
         state = _make_state(
             response_mode="answer_then_resume",
-            user_message="今天天气真好",
+            user_message="谢谢",
         )
 
         result = await node.execute(state)
@@ -130,7 +130,7 @@ class TestResponsePlannerNode:
         node = ConversationControlNode(llm=llm)
         state = _make_state(
             response_mode="answer_then_resume",
-            user_message="那新疆是不是更冷",
+            user_message="谢谢",
             conversation_history=[
                 {"user": "天气真冷啊", "assistant": "是啊，这两天降温挺明显的。"},
                 {"user": "我要去新疆旅行", "assistant": "新疆昼夜温差会比较大。"},
@@ -150,4 +150,72 @@ class TestResponsePlannerNode:
         assert "短期记忆：" in prompt_text
         assert "我要去新疆旅行" in prompt_text
         assert "当前主任务：推荐" in prompt_text
+
+    @pytest.mark.asyncio
+    async def test_conversation_control_redirects_out_of_scope_topic_back_to_business(self):
+        node = ConversationControlNode(
+            llm=_FakeLLM("新疆确实值得去看看。顺着刚才的订单问题，您可以继续往下说，我接着帮您处理。")
+        )
+        state = _make_state(
+            active_flow="订单查询",
+            response_mode="answer_then_resume",
+            user_message="去新疆旅行",
+        )
+
+        result = await node.execute(state)
+
+        assert "新疆确实值得去看看" in result["response"]
+        assert "订单问题" in result["response"]
+        assert "主要还是处理" not in result["response"]
+        assert "先放一放" not in result["response"]
+        assert "简短接一下" not in result["response"]
+        assert "订单查询任务" not in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_conversation_control_redirects_out_of_scope_topic_naturally_in_recommend_flow(self):
+        node = ConversationControlNode(
+            llm=_FakeLLM("新加坡节奏挺快的。说回刚才挑项目这件事，您更在意技术栈、预算还是难度？")
+        )
+        state = _make_state(
+            response_mode="answer_then_resume",
+            user_message="新加坡怎么样",
+            active_task={
+                "intent": "推荐",
+                "status": "awaiting_user",
+                "slots": {"language": "Python"},
+                "pending_question": "这些里你更喜欢哪一个？",
+                "pending_action": "select_recommended_item",
+            },
+        )
+
+        result = await node.execute(state)
+
+        assert "新加坡节奏挺快的" in result["response"]
+        assert "说回刚才挑项目这件事" in result["response"]
+        assert "您更在意技术栈、预算还是难度" in result["response"]
+        assert "刚才我们在看 Python 项目" not in result["response"]
+        assert "主要还是帮您做" not in result["response"]
+
+    @pytest.mark.asyncio
+    async def test_conversation_control_out_of_scope_prompt_emphasizes_natural_transition(self):
+        llm = _CapturingLLM("新加坡节奏挺快的。说回刚才挑项目这件事，您更在意技术栈、预算还是难度？")
+        node = ConversationControlNode(llm=llm)
+        state = _make_state(
+            response_mode="answer_then_resume",
+            user_message="新加坡怎么样",
+            active_task={
+                "intent": "推荐",
+                "status": "awaiting_user",
+                "slots": {"language": "Python"},
+                "pending_question": "这些里你更喜欢哪一个？",
+                "pending_action": "select_recommended_item",
+            },
+        )
+
+        await node.execute(state)
+
+        prompt_text = "\n".join(getattr(message, "content", "") for message in llm.messages)
+        assert "不自然示例" in prompt_text
+        assert "更自然示例" in prompt_text
+        assert "不要直接写“我们先说回刚才的项目选择”" in prompt_text
 

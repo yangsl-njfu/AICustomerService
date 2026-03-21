@@ -83,15 +83,27 @@ class BusinessPack:
 
     def get_intent_labels(self) -> List[str]:
         classifier = self.config.get("intent_classifier", {})
-        labels = classifier.get("labels")
-        return labels or list(DEFAULT_INTENT_LABELS)
+        labels = list(classifier.get("labels") or [])
+        merged: List[str] = []
+        for label in labels + list(DEFAULT_INTENT_LABELS):
+            if label not in merged:
+                merged.append(label)
+        return merged
 
     def get_intent_rules(self) -> Dict[str, List[str]]:
         classifier = self.config.get("intent_classifier", {})
-        rules = classifier.get("rules")
-        if rules:
-            return {intent: list(keywords) for intent, keywords in rules.items()}
-        return {intent: list(keywords) for intent, keywords in DEFAULT_INTENT_RULES.items()}
+        rules = classifier.get("rules") or {}
+        merged: Dict[str, List[str]] = {
+            intent: list(keywords)
+            for intent, keywords in DEFAULT_INTENT_RULES.items()
+        }
+        for intent, keywords in rules.items():
+            combined = list(merged.get(intent, []))
+            for keyword in list(keywords):
+                if keyword not in combined:
+                    combined.append(keyword)
+            merged[intent] = combined
+        return merged
 
     def get_intent_examples(self) -> List[Dict[str, str]]:
         classifier = self.config.get("intent_classifier", {})

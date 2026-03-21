@@ -8,6 +8,7 @@ INTENT_RECOMMEND = "推荐"
 INTENT_PRODUCT_INQUIRY = "商品咨询"
 INTENT_PURCHASE_GUIDE = "购买指导"
 INTENT_ORDER_QUERY = "订单查询"
+INTENT_CART_QUERY = "购物车查询"
 INTENT_DOCUMENT_ANALYSIS = "文档分析"
 INTENT_AFTERSALES = "售后服务"
 
@@ -18,6 +19,7 @@ DEFAULT_INTENT_LABELS = [
     INTENT_PRODUCT_INQUIRY,
     INTENT_PURCHASE_GUIDE,
     INTENT_ORDER_QUERY,
+    INTENT_CART_QUERY,
     INTENT_DOCUMENT_ANALYSIS,
     INTENT_AFTERSALES,
 ]
@@ -28,6 +30,7 @@ DEFAULT_INTENT_HANDLER_MAP = {
     INTENT_PRODUCT_INQUIRY: "product_inquiry",
     INTENT_PURCHASE_GUIDE: "purchase_guide",
     INTENT_ORDER_QUERY: "order_query",
+    INTENT_CART_QUERY: "cart_inquiry",
     INTENT_DOCUMENT_ANALYSIS: "document_analysis",
     INTENT_AFTERSALES: "aftersales_flow",
     INTENT_RECOMMEND: "topic_advisor",
@@ -68,6 +71,14 @@ DEFAULT_INTENT_RULES = {
         "什么时候发",
         "查订单",
         "订单号",
+    ],
+    INTENT_CART_QUERY: [
+        "购物车",
+        "购物袋",
+        "购物清单",
+        "车里有",
+        "购物车里",
+        "加入购物车",
     ],
     INTENT_PURCHASE_GUIDE: [
         "怎么购买",

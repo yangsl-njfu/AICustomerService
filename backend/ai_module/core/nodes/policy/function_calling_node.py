@@ -6,6 +6,7 @@ import logging
 from services.function_tools import all_tools
 
 from ai_module.core.constants import (
+    INTENT_CART_QUERY,
     INTENT_DOCUMENT_ANALYSIS,
     INTENT_PURCHASE_GUIDE,
     INTENT_QA,
@@ -23,6 +24,7 @@ SKIP_INTENTS = {
     INTENT_TICKET,
     INTENT_PURCHASE_GUIDE,
     INTENT_RECOMMEND,
+    INTENT_CART_QUERY,
 }
 
 DEFAULT_SYSTEM_PROMPT = (

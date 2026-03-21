@@ -4,9 +4,6 @@ from __future__ import annotations
 import logging
 import re
 
-from database.connection import get_db_context
-from services.order_service import OrderService
-
 from .contracts import OrderQueryMode
 
 logger = logging.getLogger(__name__)
@@ -21,6 +18,14 @@ class OrderQueryService:
         "取消该订单",
         "不要这个订单",
         "不想要这个订单",
+    )
+    CART_QUERY_KEYWORDS = (
+        "购物车",
+        "购物袋",
+        "购物清单",
+        "购物车里",
+        "加入购物车",
+        "车里有",
     )
 
     STATUS_MAP = {
@@ -43,6 +48,9 @@ class OrderQueryService:
 
     def is_cancel_order_request(self, user_message: str) -> bool:
         return any(keyword in user_message for keyword in self.CANCEL_ORDER_KEYWORDS)
+
+    def is_cart_query_request(self, user_message: str) -> bool:
+        return any(keyword in user_message for keyword in self.CART_QUERY_KEYWORDS)
 
     def build_order_quick_actions(self, target_order: dict, items: list, order_no: str) -> list:
         quick_actions = []
@@ -127,6 +135,9 @@ class OrderQueryService:
         order_no = state.get("_order_query_order_no")
         user_message = state["user_message"].lower()
 
+        from database.connection import get_db_context
+        from services.order_service import OrderService
+
         async with get_db_context() as db:
             order_service = OrderService(db)
             result = await order_service.list_orders(
@@ -190,19 +201,45 @@ class OrderQueryService:
                 ]
                 return state
 
-            state["response"] = f"""好的，为您查询订单 {order_no}：
-
-订单状态：{status_text}
-订单金额：¥{total_amount:.2f}
-下单时间：{created_at}
-商品清单：
-{product_info}
-
-请问您需要什么帮助？"""
+            state["response"] = (
+                f"好的，为您查询订单 {order_no}：\n"
+                f"订单状态：{status_text}\n"
+                f"订单金额：¥{total_amount:.2f}\n"
+                f"下单时间：{created_at}\n"
+                f"商品清单：\n{product_info}\n\n"
+                "请问您需要什么帮助？"
+            )
             state["quick_actions"] = self.build_order_quick_actions(target_order, items, order_no)
             return state
 
     async def handle_list_orders(self, state):
+        if self.is_cart_query_request(state["user_message"]):
+            state["response"] = (
+                "这句是在问购物车，不是订单。"
+                "当前助手还不支持通过对话直接查询购物车内容，您可以先打开购物车页面查看。"
+            )
+            state["quick_actions"] = [
+                {
+                    "type": "button",
+                    "label": "查看购物车",
+                    "action": "navigate",
+                    "data": {"path": "/cart"},
+                    "icon": "🛒",
+                    "color": "primary",
+                },
+                {
+                    "type": "button",
+                    "label": "查看我的订单",
+                    "action": "send_question",
+                    "data": {"question": "查看我的订单"},
+                    "icon": "📦",
+                },
+            ]
+            return state
+
+        from database.connection import get_db_context
+        from services.order_service import OrderService
+
         async with get_db_context() as db:
             order_service = OrderService(db)
             result = await order_service.list_orders(

@@ -20,6 +20,24 @@ class WorkflowExecuteMixin:
         except Exception:
             logger.warning("Failed to persist conversation context", exc_info=True)
 
+    async def _execute_forced_route(self, state: ConversationState) -> ConversationState:
+        route = state.get("skill_route")
+        if not route:
+            return state
+
+        logger.info("Executing forced route=%s", route)
+        node = self.handlers.get(route, default=self._get_qa_node())
+        try:
+            result_state = await node.execute(state)
+            state.update(result_state)
+        except Exception as exc:
+            logger.error("Forced route %s failed: %s", route, exc, exc_info=True)
+            state["response"] = "抱歉，处理您的请求时出现了问题，请稍后再试。"
+
+        if route != "clarify":
+            await self._safe_save_context(state)
+        return state
+
     async def _execute_workflow(
         self,
         workflow_name: str,
@@ -110,6 +128,9 @@ class WorkflowExecuteMixin:
             state.update(result_state)
             return state
 
+        if state.get("skill_route"):
+            return await self._execute_forced_route(state)
+
         if state.get("intent") == INTENT_RECOMMEND:
             logger.info("Recommendation intent routed directly to topic advisor")
             return await self._execute_workflow(
@@ -193,6 +214,18 @@ class WorkflowExecuteMixin:
             if state.get("response"):
                 yield {"type": "content", "delta": state["response"]}
             yield {"type": "end", "quick_actions": state.get("quick_actions")}
+            return
+
+        if state.get("skill_route"):
+            result_state = await self._execute_forced_route(state)
+            state.update(result_state)
+            if state.get("response"):
+                yield {"type": "content", "delta": state["response"]}
+            yield {
+                "type": "end",
+                "quick_actions": state.get("quick_actions"),
+                "recommended_products": state.get("recommended_products"),
+            }
             return
 
         if state.get("intent") == INTENT_RECOMMEND:

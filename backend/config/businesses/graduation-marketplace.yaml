@@ -27,6 +27,7 @@ intent_handlers:
   商品咨询: product_inquiry
   购买指导: purchase_guide
   订单查询: order_query
+  购物车查询: cart_inquiry
   文档分析: document_analysis
   售后服务: aftersales_flow
 
@@ -38,6 +39,7 @@ intent_classifier:
     - 商品咨询
     - 购买指导
     - 订单查询
+    - 购物车查询
     - 文档分析
     - 售后服务
   rules:
@@ -63,6 +65,13 @@ intent_classifier:
       - 快递
       - 查订单
       - 订单号
+    购物车查询:
+      - 购物车
+      - 购物袋
+      - 购物清单
+      - 购物车里
+      - 车里有
+      - 加入购物车
     购买指导:
       - 怎么购买
       - 如何购买

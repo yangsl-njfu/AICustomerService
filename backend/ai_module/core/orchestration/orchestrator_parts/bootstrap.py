@@ -13,6 +13,9 @@ class WorkflowBootstrapMixin:
         self.handlers.register("ticket_flow", factory=self._get_ticket_node)
         self.handlers.register("document_analysis", factory=self._get_document_node, stream_enabled=True)
         self.handlers.register("clarify", factory=self._get_clarify_node, stream_enabled=True)
+        self.handlers.register("domain_scope_guard", factory=self._get_domain_scope_guard_node)
+        self.handlers.register("cart_inquiry", factory=self._get_cart_inquiry_node)
+        self.handlers.register("unsupported_capability", factory=self._get_unsupported_capability_node)
         self.handlers.register("product_inquiry", factory=self._get_product_inquiry_node)
         self.handlers.register("order_query", factory=self._get_order_query_node)
         self.handlers.register("purchase_guide", factory=self._get_purchase_guide_node, stream_enabled=True)
@@ -85,6 +88,32 @@ class WorkflowBootstrapMixin:
             "ai_module.core.nodes.skills.clarify_node",
             "ClarifyNode",
             self.llm,
+        )
+
+    def _get_cart_inquiry_node(self):
+        return self._instantiate_node(
+            "cart_inquiry",
+            "ai_module.core.nodes.skills.cart_inquiry_node",
+            "CartInquiryNode",
+            self.llm,
+        )
+
+    def _get_domain_scope_guard_node(self):
+        return self._instantiate_node(
+            "domain_scope_guard",
+            "ai_module.core.nodes.skills.domain_scope_guard_node",
+            "DomainScopeGuardNode",
+            self.llm,
+            runtime=self.runtime,
+        )
+
+    def _get_unsupported_capability_node(self):
+        return self._instantiate_node(
+            "unsupported_capability",
+            "ai_module.core.nodes.skills.unsupported_capability_node",
+            "UnsupportedCapabilityNode",
+            self.llm,
+            runtime=self.runtime,
         )
 
     def _get_product_inquiry_node(self):

@@ -10,6 +10,7 @@ from config import settings
 from services.knowledge_retriever import knowledge_retriever
 
 from ...memory_builder import MemoryContextBuilder
+from ...out_of_scope_reply import compose_out_of_scope_reply
 
 memory_builder = MemoryContextBuilder()
 _file_service = None
@@ -80,12 +81,19 @@ class QAFlowService:
 
         return f"{self.business_name(state)}相关问题、资料解读、商品或服务说明、购买流程、订单与售后问题"
 
-    def scope_redirect_reply(self, state) -> str:
+    async def scope_redirect_reply(self, state) -> str:
         business_name = self.business_name(state)
         scope_hint = self.business_scope_hint(state)
-        return (
-            f"这个话题我这边先不展开，我主要还是处理 {business_name} 相关问题。"
-            f"您可以继续咨询{scope_hint}，我接着帮您处理。"
+        return await compose_out_of_scope_reply(
+            state.get("user_message", ""),
+            (
+                f"如果您想继续聊{business_name}这边，"
+                f"我可以帮您看{scope_hint}。"
+            ),
+            llm=self.llm,
+            business_name=business_name,
+            task_hint=(state.get("active_flow") or "业务咨询"),
+            context_hint=(state.get("conversation_summary") or ""),
         )
 
     def quick_reply_for_chitchat(self, message: str) -> Optional[str]:
@@ -217,7 +225,7 @@ class QAFlowService:
             messages = await self.prepare_messages(state)
         response = await self.llm.ainvoke(messages)
         content = (response.content if hasattr(response, "content") else str(response)).strip()
-        state["response"] = content or self.scope_redirect_reply(state)
+        state["response"] = content or await self.scope_redirect_reply(state)
         return state
 
     async def generate_response_stream(self, state):
@@ -240,6 +248,6 @@ class QAFlowService:
 
         full_response = full_response.strip()
         if not full_response:
-            full_response = self.scope_redirect_reply(state)
+            full_response = await self.scope_redirect_reply(state)
             yield full_response
         state["response"] = full_response

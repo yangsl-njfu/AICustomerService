@@ -1,13 +1,14 @@
 """会话控制回复节点。"""
 from __future__ import annotations
 
-import re
 from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from ai_module.core.nodes.common.base import BaseNode
+from ai_module.core.domain_scope import looks_out_of_business_scope
 from ai_module.core.memory_builder import MemoryContextBuilder
+from ai_module.core.out_of_scope_reply import compose_out_of_scope_reply
 from ai_module.core.constants import (
     INTENT_RECOMMEND,
     RESPONSE_MODE_ANSWER_THEN_RESUME,
@@ -30,12 +31,6 @@ _STEP_HINTS = {
     "answer_follow_up": "上一轮还差哪部分信息",
     "choose_next_step": "下一步想继续哪种操作",
 }
-
-_SOCIAL_MESSAGE_RE = re.compile(
-    r"^(你好|您好|hello|hi|在吗|哈哈|哈喽|谢谢|感谢|辛苦了|好的|ok|再见|拜拜)[!！。.\s]*$",
-    re.IGNORECASE,
-)
-
 
 class ConversationControlNode(BaseNode):
     """生成打断、接话、帮助、取消时的统一回复。"""
@@ -82,9 +77,11 @@ class ConversationControlNode(BaseNode):
             return pending_question
         return None
 
-    def _is_simple_social_message(self, state: ConversationState) -> bool:
-        message = (state.get("user_message") or "").strip()
-        return bool(_SOCIAL_MESSAGE_RE.match(message))
+    def _looks_out_of_business_scope(self, state: ConversationState) -> bool:
+        return looks_out_of_business_scope(
+            state.get("user_message", ""),
+            runtime=self.runtime,
+        )
 
     def _business_name(self, state: ConversationState) -> str:
         execution_context = state.get("execution_context") or {}
@@ -104,27 +101,47 @@ class ConversationControlNode(BaseNode):
         active_task = state.get("active_task") or {}
         slots = active_task.get("slots") or {}
         language = slots.get("language")
-        language_hint = f"刚才我们在看 {language} 项目，" if language else ""
-        return (
-            "这个话题我先简短接一下，不过我这边主要还是帮您做毕业设计项目推荐。"
-            f"{language_hint}回到刚才的项目选择，您更在意技术栈、预算还是难度？"
-        )
+        if language:
+            return f"说回刚才在看的 {language} 项目，您更在意技术栈、预算还是难度？"
+        return "说回刚才挑项目这件事，您更在意技术栈、预算还是难度？"
 
     def _build_generic_fallback_reply(self, state: ConversationState, flow_label: str) -> str:
-        business_name = self._business_name(state)
-        return (
-            f"这个我先简短接一下，不过我这边主要还是处理 {business_name} 相关内容。"
-            f"回到刚才的{flow_label}，您可以直接顺着上一条继续说，我接着帮您处理。"
-        )
+        return f"顺着刚才的{flow_label}，您可以继续往下说，我接着帮您处理。"
 
-    def _build_scope_redirect_reply(self, state: ConversationState, flow_label: str) -> str:
+    def _build_scope_redirect_text(self, state: ConversationState, flow_label: str) -> str:
         if state.get("active_flow") == INTENT_RECOMMEND:
             return self._build_topic_advisor_fallback_reply(state)
         return self._build_generic_fallback_reply(state, flow_label)
 
+    def _build_context_hint(self, state: ConversationState) -> str:
+        parts = []
+        step_hint = self._step_hint(state)
+        if step_hint:
+            parts.append(f"当前停留点：{step_hint}")
+        history = state.get("conversation_history") or []
+        if history:
+            last = history[-1]
+            last_assistant = (last.get("assistant") or "").strip()
+            if last_assistant:
+                parts.append(f"上一轮助手说：{last_assistant[:80]}")
+        return "；".join(parts) if parts else "用户刚进入业务流程"
+
+    async def _build_scope_redirect_reply(self, state: ConversationState, flow_label: str) -> str:
+        return await compose_out_of_scope_reply(
+            state.get("user_message", ""),
+            self._build_scope_redirect_text(state, flow_label),
+            llm=self.llm,
+            business_name=self._business_name(state),
+            task_hint=flow_label,
+            context_hint=self._build_context_hint(state),
+        )
+
     async def _generate_side_topic_reply(self, state: ConversationState, flow_label: str, step_hint: Optional[str]) -> str:
+        if self._looks_out_of_business_scope(state):
+            return await self._build_scope_redirect_reply(state, flow_label)
+
         if self.llm is None:
-            return self._build_scope_redirect_reply(state, flow_label)
+            return await self._build_scope_redirect_reply(state, flow_label)
 
         short_term_memory = self.memory_builder.build_short_term_memory_text(state)
 
@@ -145,7 +162,7 @@ class ConversationControlNode(BaseNode):
 
 风格要求：
 - 像真人顺手接话，但始终记得主任务。
-- 可以有一句轻微过渡，例如“顺带说一句”“先简单说下”。
+- 可以有一句轻微过渡，但不要直接说“我先简单说一下”“我先接一下”这类提示词式表述。
 - 禁止把侧话题展开成长篇回答。
 - 对于“你好/谢谢/在吗”这类轻寒暄，可以更简短。""",
                 ),

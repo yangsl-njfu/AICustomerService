@@ -1,6 +1,23 @@
 ﻿import pytest
 
+from ai_module.core.constants import DEFAULT_INTENT_RULES
 from ai_module.core.nodes.understanding.message_entry_node import MessageEntryNode
+
+
+class _RuntimeStub:
+    class _BusinessPack:
+        config = {}
+
+    business_pack = _BusinessPack()
+
+    def __init__(self, *, features=None):
+        self._features = features or {}
+
+    def get_business_info(self):
+        return {"features": dict(self._features)}
+
+    def get_intent_rules(self):
+        return {intent: list(keywords) for intent, keywords in DEFAULT_INTENT_RULES.items()}
 
 
 def _make_state(message: str, **overrides):
@@ -91,6 +108,86 @@ class TestMessageEntryNode:
         assert result["continue_previous_task"] is False
 
     @pytest.mark.asyncio
+    async def test_cart_question_switches_out_of_order_flow_instead_of_reusing_order_query(self):
+        node = MessageEntryNode()
+        state = _make_state(
+            "购物车有东西吗",
+            last_intent="订单查询",
+            active_task={"intent": "订单查询", "status": "awaiting_user"},
+            pending_action="select_order",
+            pending_question="请选择您要咨询的订单",
+            conversation_history=[
+                {"user": "查看我的订单", "assistant": "您有 7 个订单，请选择要咨询的订单。"}
+            ],
+        )
+
+        result = await node.execute(state)
+
+        assert result["entry_classifier"] == "inflow"
+        assert result["inflow_type"] == "switch_flow"
+        assert result["flow_relation"] == "switch"
+        assert result["intent"] == "购物车查询"
+        assert result["domain_intent"] == "购物车查询"
+        assert result["continue_previous_task"] is False
+
+    @pytest.mark.asyncio
+    async def test_disabled_capability_in_active_flow_short_circuits_to_unsupported_route(self):
+        node = MessageEntryNode(runtime=_RuntimeStub(features={"coupon_system": False}))
+        state = _make_state(
+            "优惠券可以用吗",
+            last_intent="订单查询",
+            active_task={"intent": "订单查询", "status": "awaiting_user"},
+            pending_action="select_order",
+            pending_question="请选择您要咨询的订单",
+        )
+
+        result = await node.execute(state)
+
+        assert result["entry_classifier"] == "inflow"
+        assert result["skill_route"] == "unsupported_capability"
+        assert result["unsupported_capability"] == "coupon_query"
+        assert result["unsupported_capability_label"] == "优惠券"
+        assert result["response_mode"] == "answer_then_resume"
+        assert result["resume_mode"] == "resume_exact"
+        assert result["intent"] is None
+        assert result["continue_previous_task"] is False
+
+    @pytest.mark.asyncio
+    async def test_out_of_domain_message_short_circuits_to_domain_scope_guard(self):
+        node = MessageEntryNode()
+        state = _make_state(
+            "去新疆旅行",
+            last_intent="订单查询",
+            active_task={"intent": "订单查询", "status": "awaiting_user"},
+            pending_action="select_order",
+            pending_question="请选择您要咨询的订单",
+        )
+
+        result = await node.execute(state)
+
+        assert result["entry_classifier"] == "inflow"
+        assert result["skill_route"] == "domain_scope_guard"
+        assert result["semantic_source"] == "domain_scope_guard"
+        assert result["inflow_type"] == "irrelevant"
+        assert result["intent"] is None
+        assert result["flow_relation"] == "interrupt"
+        assert result["response_mode"] == "answer_then_resume"
+        assert result["continue_previous_task"] is False
+
+    @pytest.mark.asyncio
+    async def test_out_of_domain_message_without_active_flow_short_circuits_before_intent(self):
+        node = MessageEntryNode()
+        state = _make_state("去新疆旅行")
+
+        result = await node.execute(state)
+
+        assert result["entry_classifier"] == "global_intent"
+        assert result["skill_route"] == "domain_scope_guard"
+        assert result["semantic_source"] == "domain_scope_guard"
+        assert result["intent"] is None
+        assert result["flow_relation"] == "no_flow"
+
+    @pytest.mark.asyncio
     async def test_same_domain_self_contained_request_defers_to_inflow_llm(self):
         node = MessageEntryNode()
         state = _make_state(
@@ -165,13 +262,14 @@ class TestMessageEntryNode:
 
         result = await node.execute(state)
 
-        assert result["inflow_type"] != "switch_flow"
+        assert result["skill_route"] == "domain_scope_guard"
+        assert result["semantic_source"] == "domain_scope_guard"
         assert result["intent"] is None
-        assert result["flow_relation"] in {"interrupt", "clarify"}
+        assert result["flow_relation"] == "interrupt"
         assert result["continue_previous_task"] is False
 
     @pytest.mark.asyncio
-    async def test_related_question_does_not_soft_switch_to_global_qa(self):
+    async def test_out_of_domain_question_short_circuits_before_related_question_fallback(self):
         node = MessageEntryNode()
         state = _make_state(
             "中东地区怎么打仗了",
@@ -210,8 +308,9 @@ class TestMessageEntryNode:
 
         result = await node.execute(state)
 
-        assert result["inflow_type"] == "related_question"
+        assert result["skill_route"] == "domain_scope_guard"
+        assert result["semantic_source"] == "domain_scope_guard"
+        assert result["inflow_type"] == "irrelevant"
         assert result["intent"] is None
-        assert result["flow_relation"] == "interrupt"
+        assert result["response_mode"] == "answer_then_resume"
         assert result["continue_previous_task"] is False
-

@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 
+from ai_module.core.capability_registry import find_unsupported_capability
+from ai_module.core.domain_scope import looks_out_of_business_scope
 from ai_module.core.nodes.common.base import BaseNode
 from ai_module.core.nodes.understanding.intent_node import IntentRecognitionNode
 from ai_module.core.nodes.understanding.turn_understanding_node import TurnUnderstandingNode
@@ -43,6 +45,8 @@ from ai_module.core.constants import (
     INFLOW_VALID_CURRENT_INPUT,
     INTENT_QA,
     INTENT_TICKET,
+    RESUME_MODE_RESUME_EXACT,
+    RESPONSE_MODE_ANSWER_THEN_RESUME,
 )
 from ai_module.core.state import ConversationState
 
@@ -76,6 +80,11 @@ class MessageEntryNode(BaseNode):
         state["resume_mode"] = None
         state["dialogue_act"] = None
         state["domain_intent"] = None
+        state["skill_route"] = None
+        state["unsupported_capability"] = None
+        state["unsupported_capability_label"] = None
+        state["unsupported_capability_action"] = None
+        state["semantic_source"] = None
         state["self_contained_request"] = False
         state["continue_previous_task"] = False
         state["need_clarification"] = False
@@ -167,6 +176,87 @@ class MessageEntryNode(BaseNode):
             return
         intent_history = state.get("intent_history") or []
         self.global_intent_classifier._append_intent_history(state, intent_history, intent, confidence)
+
+    def _has_supported_business_signal(self, message: str) -> bool:
+        rule_result = self.global_intent_classifier._match_by_rules(message or "")
+        return bool(rule_result and rule_result[0] != INTENT_QA)
+
+    def _looks_out_of_business_scope(self, state: ConversationState) -> bool:
+        return looks_out_of_business_scope(
+            state.get("user_message", ""),
+            runtime=self.runtime,
+        )
+
+    def _build_domain_scope_state(self, state: ConversationState) -> ConversationState:
+        state["skill_route"] = "domain_scope_guard"
+        state["semantic_source"] = "domain_scope_guard"
+        state["intent"] = None
+        state["domain_intent"] = None
+        state["confidence"] = 0.98
+        state["understanding_confidence"] = 0.98
+        state["need_clarification"] = False
+        state["continue_previous_task"] = False
+        state["self_contained_request"] = True
+
+        if state.get("has_active_flow"):
+            state["entry_classifier"] = ENTRY_CLASSIFIER_INFLOW
+            state["inflow_type"] = INFLOW_IRRELEVANT
+            state["flow_relation"] = "interrupt"
+            state["dialogue_act"] = DIALOGUE_ACT_SWITCH_TOPIC
+            state["response_mode"] = RESPONSE_MODE_ANSWER_THEN_RESUME
+            state["resume_mode"] = RESUME_MODE_RESUME_EXACT
+        else:
+            state["entry_classifier"] = ENTRY_CLASSIFIER_GLOBAL
+            state["flow_relation"] = "no_flow"
+            state["dialogue_act"] = DIALOGUE_ACT_NEW_REQUEST
+
+        return state
+
+    def _find_unsupported_capability(self, state: ConversationState) -> Optional[Dict[str, Any]]:
+        if self.runtime is None:
+            return None
+
+        business_info = self.runtime.get_business_info() if hasattr(self.runtime, "get_business_info") else {}
+        features = business_info.get("features") if isinstance(business_info, dict) else {}
+        business_pack = getattr(self.runtime, "business_pack", None)
+        config = getattr(business_pack, "config", {}) if business_pack is not None else {}
+        return find_unsupported_capability(
+            state.get("user_message", ""),
+            features=features if isinstance(features, dict) else {},
+            config=config if isinstance(config, dict) else {},
+        )
+
+    def _build_unsupported_capability_state(
+        self,
+        state: ConversationState,
+        capability: Dict[str, Any],
+    ) -> ConversationState:
+        state["skill_route"] = "unsupported_capability"
+        state["unsupported_capability"] = capability.get("key")
+        state["unsupported_capability_label"] = capability.get("label")
+        state["unsupported_capability_action"] = capability.get("fallback_action")
+        state["semantic_source"] = "capability_registry"
+        state["intent"] = None
+        state["domain_intent"] = None
+        state["confidence"] = 0.98
+        state["understanding_confidence"] = 0.98
+        state["need_clarification"] = False
+        state["continue_previous_task"] = False
+        state["self_contained_request"] = True
+
+        if state.get("has_active_flow"):
+            state["entry_classifier"] = ENTRY_CLASSIFIER_INFLOW
+            state["inflow_type"] = INFLOW_IRRELEVANT
+            state["flow_relation"] = "interrupt"
+            state["dialogue_act"] = DIALOGUE_ACT_SWITCH_TOPIC
+            state["response_mode"] = RESPONSE_MODE_ANSWER_THEN_RESUME
+            state["resume_mode"] = RESUME_MODE_RESUME_EXACT
+        else:
+            state["entry_classifier"] = ENTRY_CLASSIFIER_GLOBAL
+            state["flow_relation"] = "no_flow"
+            state["dialogue_act"] = DIALOGUE_ACT_NEW_REQUEST
+
+        return state
 
     def _format_recent_history(self, history: List[Dict[str, Any]], limit: int = 3) -> str:
         formatted = self.memory_builder.build_recent_history_text(history, limit=max(limit, 6))
@@ -289,6 +379,8 @@ class MessageEntryNode(BaseNode):
             return False
         if hinted_intent == INTENT_QA:
             return False
+        if not self._has_supported_business_signal(state.get("user_message", "")):
+            return False
         return hinted_intent != active_flow
 
     async def _build_switch_state(
@@ -330,6 +422,9 @@ class MessageEntryNode(BaseNode):
         expected_user_acts: List[str],
         min_confidence: float = 0.78,
     ) -> Optional[ConversationState]:
+        if not self._has_supported_business_signal(state.get("user_message", "")):
+            return None
+
         probe_state = copy.deepcopy(state)
         probe_state["entry_classifier"] = ENTRY_CLASSIFIER_GLOBAL
         probe_state["has_active_flow"] = False
@@ -457,6 +552,14 @@ class MessageEntryNode(BaseNode):
 
         state = await self.inflow_understanding.execute(state)
 
+        if not state.get("continue_previous_task"):
+            if self._looks_out_of_business_scope(state):
+                return self._build_domain_scope_state(state)
+
+            unsupported_capability = self._find_unsupported_capability(state)
+            if unsupported_capability is not None:
+                return self._build_unsupported_capability_state(state, unsupported_capability)
+
         if self._is_switch_request(state, active_flow):
             state["inflow_type"] = INFLOW_SWITCH_FLOW
             state["flow_relation"] = "switch"
@@ -566,6 +669,13 @@ class MessageEntryNode(BaseNode):
         state["expected_user_acts"] = expected_user_acts
 
         if not has_active_flow:
+            if self._looks_out_of_business_scope(state):
+                return self._build_domain_scope_state(state)
+
+            unsupported_capability = self._find_unsupported_capability(state)
+            if unsupported_capability is not None:
+                return self._build_unsupported_capability_state(state, unsupported_capability)
+
             return await self._run_global_intent(state)
 
         return await self._run_inflow_classifier(state)

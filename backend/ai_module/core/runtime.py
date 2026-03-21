@@ -260,7 +260,7 @@ class AIRuntimeFactory:
 
         runtime = self.get_runtime(resolved_business_id)
 
-        from .workflow import AIWorkflow
+        from .orchestration import AIWorkflow
 
         workflow = AIWorkflow(runtime=runtime)
         self._workflows[resolved_business_id] = workflow

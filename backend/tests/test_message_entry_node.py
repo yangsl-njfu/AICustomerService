@@ -1,6 +1,6 @@
 ﻿import pytest
 
-from ai_module.core.nodes.message_entry_node import MessageEntryNode
+from ai_module.core.nodes.understanding.message_entry_node import MessageEntryNode
 
 
 def _make_state(message: str, **overrides):

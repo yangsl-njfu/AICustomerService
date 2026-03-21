@@ -1,8 +1,8 @@
 ﻿import types
 
 import pytest
-from ai_module.core.nodes.conversation_control_node import ConversationControlNode
-from ai_module.core.nodes.response_planner_node import ResponsePlannerNode
+from ai_module.core.nodes.policy.conversation_control_node import ConversationControlNode
+from ai_module.core.nodes.policy.response_planner_node import ResponsePlannerNode
 
 
 def _make_state(**overrides):

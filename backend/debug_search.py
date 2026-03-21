@@ -4,7 +4,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 async def test():
-    from ai_module.core.workflow import AIWorkflow
+    from ai_module.core.orchestration import AIWorkflow
     from services.redis_cache import redis_cache
 
     await redis_cache.connect()

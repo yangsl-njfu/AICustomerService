@@ -2,7 +2,7 @@
 
 ## Main Runtime Chain
 
-The backend AI pipeline is centered on `AIWorkflow` in [workflow/orchestrator.py](/e:/Project/AICustomerService/backend/ai_module/core/workflow/orchestrator.py).
+The backend AI pipeline is centered on `AIWorkflow` in [orchestration/orchestrator.py](/e:/Project/AICustomerService/backend/ai_module/core/orchestration/orchestrator.py).
 
 Current non-stream flow:
 
@@ -23,50 +23,71 @@ requests share the same preparation pipeline.
 
 ### Core
 
-- `workflow/orchestrator.py`: workflow assembly and entrypoints
+- `orchestration/orchestrator.py`: thin assembly facade
+- `orchestration/orchestrator_parts/*.py`: initialization/state/prepare/execute/entrypoint responsibilities
 - `runtime.py`: business pack, prompts, model/tool provisioning
 - `state.py`: shared conversation contract
-- `workflow/skill_router.py`: skill routing after execution planning
-- `workflow/handler_registry.py`: node registration
+- `orchestration/skill_router.py`: skill routing after execution planning
+- `orchestration/handler_registry.py`: node registration
+- `workflows/`: pluggable business workflow packages (service-level orchestration)
 
 Core package exports are lazy:
 
 - `ai_module.core.__init__` no longer imports `runtime` and `workflow` eagerly
 - `ai_module.core.nodes.__init__` no longer imports every node eagerly
 
-This keeps targeted imports like `ai_module.core.nodes.message_entry_node` from
+This keeps targeted imports like `ai_module.core.nodes.understanding.message_entry_node` from
 pulling in optional dependencies such as file or database stacks.
 
 ### Understanding
 
-- `nodes/message_entry_node.py`: entry orchestration
-- `nodes/intent_node.py`: global task intent recognition
-- `nodes/turn_understanding_node.py`: active-task turn understanding
+- `nodes/understanding/message_entry_node.py`: entry orchestration
+- `nodes/understanding/intent_node.py`: global task intent recognition
+- `nodes/understanding/turn_understanding_node.py`: active-task turn understanding
 
 ### Policy
 
-- `nodes/response_planner_node.py`: map inflow to response mode
-- `nodes/policy_node.py`: converge understanding into executable intent
-- `nodes/dialogue_state_node.py`: persist/advance active task state
-- `nodes/conversation_control_node.py`: non-skill conversational control replies
+- `nodes/policy/response_planner_node.py`: map inflow to response mode
+- `nodes/policy/policy_node.py`: converge understanding into executable intent
+- `nodes/policy/dialogue_state_node.py`: persist/advance active task state
+- `nodes/policy/conversation_control_node.py`: non-skill conversational control replies
 
 ### Skills
 
-- `nodes/qa_node.py`
-- `nodes/topic_advisor_node.py`
-- `nodes/order_query_node.py`
-- `nodes/purchase_guide_node.py`
-- `nodes/purchase_flow_node.py`
-- `nodes/aftersales_flow_node.py`
-- `nodes/ticket_node.py`
-- `nodes/document_node.py`
-- `nodes/clarify_node.py`
-- `nodes/product_inquiry_node.py`
+- `nodes/skills/qa_node.py`
+- `nodes/skills/topic_advisor_node.py`
+- `nodes/skills/order_query_node.py`
+- `nodes/skills/purchase_guide_node.py`
+- `nodes/skills/purchase_flow_node.py`
+- `nodes/skills/aftersales_flow_node.py`
+- `nodes/skills/ticket_node.py`
+- `nodes/skills/document_node.py`
+- `nodes/skills/clarify_node.py`
+- `nodes/skills/product_inquiry_node.py`
+
+### Workflow Packages
+
+- `workflows/topic_advisor/workflow.py`
+- `workflows/purchase_flow/workflow.py`
+- `workflows/aftersales_flow/workflow.py`
+- `workflows/*/state_machine.py` (explicit transition map)
+- `workflows/*/steps.py` (step implementations)
+
+`AIWorkflow` now executes these business flows through `WorkflowRegistry`.
+The underlying node implementations remain unchanged and are reused inside each
+workflow package.
+
+For `aftersales_flow`, business logic is decomposed into dedicated step nodes in:
+
+- `nodes/aftersales/constants.py`
+- `nodes/aftersales/*_node.py` (one step per file)
+
+The workflow only handles orchestration and routing across these nodes.
 
 ### Memory
 
-- `nodes/context_node.py`
-- `nodes/save_context_node.py`
+- `nodes/memory/context_node.py`
+- `nodes/memory/save_context_node.py`
 - `memory_builder.py`
 - `summarizer.py`
 
@@ -76,7 +97,7 @@ pulling in optional dependencies such as file or database stacks.
   - `nodes/personalized_recommend_node.py`
   - `nodes/product_recommendation_node.py`
 - Skill nodes are now registered lazily through `HandlerRegistry`. Importing
-  `ai_module.core.workflow` no longer instantiates order/document/aftersales
+  `ai_module.core.orchestration` no longer instantiates order/document/aftersales
   handlers up front.
 - `qa_node.py` and `document_node.py` now lazy-load `FileService` so optional
   file-storage dependencies are not required at module import time.

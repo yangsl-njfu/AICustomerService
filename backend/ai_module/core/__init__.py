@@ -1,7 +1,7 @@
 ﻿"""Lazy exports for the AI service package.
 
 Avoid importing the whole workflow/runtime stack when a caller only needs a
-single submodule such as ``ai_module.core.nodes.message_entry_node``.
+single submodule such as ``ai_module.core.nodes.understanding.message_entry_node``.
 """
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from importlib import import_module
 
 _EXPORTS = {
     "runtime_factory": (".runtime", "runtime_factory"),
-    "AIWorkflow": (".workflow", "AIWorkflow"),
-    "ai_workflow": (".workflow", "ai_workflow"),
+    "AIWorkflow": (".orchestration", "AIWorkflow"),
+    "ai_workflow": (".orchestration", "ai_workflow"),
 }
 
 

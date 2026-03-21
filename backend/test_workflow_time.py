@@ -71,7 +71,7 @@ async def test_single(workflow, user_id, session_id, message, desc):
 
 
 async def main():
-    from ai_module.core.workflow import AIWorkflow
+    from ai_module.core.orchestration import AIWorkflow
     from services.redis_cache import redis_cache
 
     try:

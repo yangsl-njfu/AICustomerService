@@ -1,7 +1,7 @@
 ﻿from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from ai_module.core.nodes.turn_understanding_node import TurnUnderstandingNode
+from ai_module.core.nodes.understanding.turn_understanding_node import TurnUnderstandingNode
 
 
 def _make_state(message: str, **overrides):

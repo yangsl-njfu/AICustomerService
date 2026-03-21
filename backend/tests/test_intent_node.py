@@ -32,10 +32,10 @@ sys.modules["backend.ai_module.core.state"] = _state_mod
 _state_spec.loader.exec_module(_state_mod)
 
 # Load base.py
-_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "base.py")
-_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.base", _base_path)
+_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "common", "base.py")
+_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.common.base", _base_path)
 _base_mod = importlib.util.module_from_spec(_base_spec)
-sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.common.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
 # Load config.py
@@ -55,14 +55,14 @@ sys.modules["backend.ai_module.core.constants"] = _constants_mod
 _constants_spec.loader.exec_module(_constants_mod)
 
 # Load intent_node.py
-_intent_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "intent_node.py")
+_intent_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "understanding", "intent_node.py")
 _intent_spec = importlib.util.spec_from_file_location(
-    "backend.ai_module.core.nodes.intent_node", _intent_path,
+    "backend.ai_module.core.nodes.understanding.intent_node", _intent_path,
     submodule_search_locations=[],
 )
 _intent_mod = importlib.util.module_from_spec(_intent_spec)
 _intent_mod.__package__ = "backend.ai_module.core.nodes"
-sys.modules["backend.ai_module.core.nodes.intent_node"] = _intent_mod
+sys.modules["backend.ai_module.core.nodes.understanding.intent_node"] = _intent_mod
 _intent_spec.loader.exec_module(_intent_mod)
 
 _format_intent_history = _intent_mod._format_intent_history

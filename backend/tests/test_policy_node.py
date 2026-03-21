@@ -1,5 +1,5 @@
 ﻿import pytest
-from ai_module.core.nodes.policy_node import PolicyNode
+from ai_module.core.nodes.policy.policy_node import PolicyNode
 
 
 def _make_state(**overrides):

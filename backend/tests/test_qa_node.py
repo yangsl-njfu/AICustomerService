@@ -48,7 +48,7 @@ _fs_mod.FileService = MagicMock
 sys.modules["services.file_service"] = _fs_mod
 
 # Stub base node
-_base_mod = types.ModuleType("backend.ai_module.core.nodes.base")
+_base_mod = types.ModuleType("backend.ai_module.core.nodes.common.base")
 
 
 class _FakeBaseNode:
@@ -58,8 +58,8 @@ class _FakeBaseNode:
 
 
 _base_mod.BaseNode = _FakeBaseNode
-sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
-sys.modules["ai_module.core.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.common.base"] = _base_mod
+sys.modules["ai_module.core.nodes.common.base"] = _base_mod
 
 # Stub state
 _state_path = os.path.join(_backend_dir, "ai_module", "core", "state.py")
@@ -83,11 +83,11 @@ sys.modules["backend.ai_module.core.memory_builder"] = _memory_builder_mod
 _memory_builder_spec.loader.exec_module(_memory_builder_mod)
 
 # Now load qa_node
-_qa_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "qa_node.py")
-_qa_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.qa_node", _qa_path)
+_qa_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "skills", "qa_node.py")
+_qa_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.skills.qa_node", _qa_path)
 _qa_mod = importlib.util.module_from_spec(_qa_spec)
 _qa_mod.__package__ = "backend.ai_module.core.nodes"
-sys.modules["backend.ai_module.core.nodes.qa_node"] = _qa_mod
+sys.modules["backend.ai_module.core.nodes.skills.qa_node"] = _qa_mod
 _qa_spec.loader.exec_module(_qa_mod)
 
 QANode = _qa_mod.QANode

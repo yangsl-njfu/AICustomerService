@@ -1,5 +1,5 @@
 ﻿import pytest
-from ai_module.core.nodes.dialogue_state_node import DialogueStateNode
+from ai_module.core.nodes.policy.dialogue_state_node import DialogueStateNode
 
 
 def _make_state(**overrides):

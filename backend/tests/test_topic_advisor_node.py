@@ -22,10 +22,10 @@ _state_mod = importlib.util.module_from_spec(_state_spec)
 sys.modules["backend.ai_module.core.state"] = _state_mod
 _state_spec.loader.exec_module(_state_mod)
 
-_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "base.py")
-_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.base", _base_path)
+_base_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "common", "base.py")
+_base_spec = importlib.util.spec_from_file_location("backend.ai_module.core.nodes.common.base", _base_path)
 _base_mod = importlib.util.module_from_spec(_base_spec)
-sys.modules["backend.ai_module.core.nodes.base"] = _base_mod
+sys.modules["backend.ai_module.core.nodes.common.base"] = _base_mod
 _base_spec.loader.exec_module(_base_mod)
 
 _constants_path = os.path.join(_backend_dir, "ai_module", "core", "constants.py")
@@ -41,15 +41,15 @@ _function_tools_mod.topic_advisor_tools = []
 sys.modules["services"] = _services_pkg
 sys.modules["services.function_tools"] = _function_tools_mod
 
-_node_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "topic_advisor_node.py")
+_node_path = os.path.join(_backend_dir, "ai_module", "core", "nodes", "skills", "topic_advisor_node.py")
 _node_spec = importlib.util.spec_from_file_location(
-    "backend.ai_module.core.nodes.topic_advisor_node",
+    "backend.ai_module.core.nodes.skills.topic_advisor_node",
     _node_path,
     submodule_search_locations=[],
 )
 _node_mod = importlib.util.module_from_spec(_node_spec)
 _node_mod.__package__ = "backend.ai_module.core.nodes"
-sys.modules["backend.ai_module.core.nodes.topic_advisor_node"] = _node_mod
+sys.modules["backend.ai_module.core.nodes.skills.topic_advisor_node"] = _node_mod
 _node_spec.loader.exec_module(_node_mod)
 
 TopicAdvisorNode = _node_mod.TopicAdvisorNode

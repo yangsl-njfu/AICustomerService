@@ -5,20 +5,26 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from config.loader import config_loader
-from ai_module.core.runtime import runtime_factory
+from ai_module.application.ports import RuntimeFactoryPort, RuntimePort, WorkflowPort
+from ai_module.infrastructure.adapters import runtime_factory_adapter
 
 
 class AIEngine:
     """Single entrypoint for runtime/workflow access and business discovery."""
 
-    def __init__(self, *, runtime_factory_instance=runtime_factory, config_loader_instance=config_loader):
+    def __init__(
+        self,
+        *,
+        runtime_factory_instance: RuntimeFactoryPort = runtime_factory_adapter,
+        config_loader_instance=config_loader,
+    ):
         self._runtime_factory = runtime_factory_instance
         self._config_loader = config_loader_instance
 
-    def get_workflow(self, business_id: Optional[str] = None):
+    def get_workflow(self, business_id: Optional[str] = None) -> WorkflowPort:
         return self._runtime_factory.get_workflow(business_id)
 
-    def get_runtime(self, business_id: Optional[str] = None):
+    def get_runtime(self, business_id: Optional[str] = None) -> RuntimePort:
         return self._runtime_factory.get_runtime(business_id)
 
     async def process_message(

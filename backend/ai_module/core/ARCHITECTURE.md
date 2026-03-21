@@ -21,6 +21,22 @@ requests share the same preparation pipeline.
 
 ## Layer Ownership
 
+### Application
+
+- `application/ports/*.py`: explicit runtime/workflow/plugin contracts
+- `application/orchestration/__init__.py`: application-layer workflow entrypoint
+
+### Domain
+
+- `domain/conversation/state.py`: conversation contract
+- `domain/conversation/constants.py`: shared domain constants
+
+### Infrastructure
+
+- `infrastructure/adapters/runtime.py`: adapters that satisfy application ports
+- `infrastructure/plugins/*.py`: concrete plugin implementation
+- `plugins/*.py`: compatibility exports only
+
 ### Core
 
 - `orchestration/orchestrator.py`: thin assembly facade

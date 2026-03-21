@@ -8,7 +8,8 @@
 - Business-pack discovery
 - Plugin metadata queries
 - A minimal standalone HTTP app
-- Core implementation under `backend/ai_module/core` and `backend/ai_module/plugins`
+- Core implementation under `backend/ai_module/core`
+- Infrastructure implementations under `backend/ai_module/infrastructure`
 
 ## Public Entry Points
 
@@ -19,17 +20,11 @@
 
 ## Enterprise Module Layout
 
-- `ai_module/application/`: orchestration and workflow facades
-- `ai_module/domain/`: conversation contracts and domain node facades
-- `ai_module/infrastructure/`: runtime and plugin facades
+- `ai_module/application/`: orchestration facades and explicit `ports`
+- `ai_module/domain/`: conversation contracts only
+- `ai_module/infrastructure/`: adapters and plugin implementations
 - `ai_module/core/`: existing implementation (kept for backward compatibility)
-
-Domain node facades are grouped by responsibility:
-
-- `domain/nodes/understanding`
-- `domain/nodes/policy`
-- `domain/nodes/memory`
-- `domain/nodes/skills`
+- `ai_module/plugins/`: compatibility exports for legacy imports
 
 ## Run As Standalone Service
 

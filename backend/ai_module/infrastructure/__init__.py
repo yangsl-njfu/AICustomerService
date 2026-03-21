@@ -1,5 +1,3 @@
-"""Infrastructure layer exports."""
+"""Infrastructure package."""
 
-from .runtime import runtime_factory
-
-__all__ = ["runtime_factory"]
+__all__: list[str] = []

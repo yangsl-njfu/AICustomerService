@@ -7,7 +7,7 @@ AI 工作流总编排入口（薄门面）。
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from config import init_chat_model, init_intent_model
 
@@ -33,6 +33,9 @@ from .router import Router
 from ..runtime import runtime_factory
 from ..workflows import WorkflowRegistry
 
+if TYPE_CHECKING:
+    from ...application.ports import RuntimePort
+
 
 class AIWorkflow(
     WorkflowBootstrapMixin,
@@ -43,7 +46,7 @@ class AIWorkflow(
 ):
     """单业务运行时下的 AI 工作流。"""
 
-    def __init__(self, runtime=None):
+    def __init__(self, runtime: "RuntimePort | None" = None):
         self.runtime = runtime or runtime_factory.get_runtime()
         self.llm = self.runtime.get_chat_model("chat") if self.runtime else init_chat_model()
         self.intent_llm = self.runtime.get_chat_model("intent") if self.runtime else init_intent_model()
